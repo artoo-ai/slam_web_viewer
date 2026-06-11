@@ -51,6 +51,13 @@ def main() -> None:
             protocol.CH_LOG,
             protocol.log_payload("warn", "tracking degraded"),
             seq=7, ts=1718000004.0),
+        # 3x2 grid: row 0 = [0, 100, 255], row 1 = [50, 50, 255]
+        "grid_3x2.bin": protocol.make_frame(
+            protocol.CH_OCCUPANCY_GRID,
+            protocol.occupancy_grid_payload(
+                width=3, height=2, resolution=0.05, origin=[-1.5, -2.0, 0.0],
+                cells=np.array([0, 100, -1, 50, 50, -1], dtype=np.int8)),
+            seq=9, ts=1718000005.0),
         # browser -> robot command bytes, for the Python side to parse in tests
         "cmd_set_param.bin": msgpack.packb(
             {"cmd": "set_param", "id": 8, "node": "slam", "params": {"voxel_size": 0.1}},
@@ -86,6 +93,12 @@ def main() -> None:
         "log.bin": {
             "topic": "log", "ts": 1718000004.0, "seq": 7,
             "data": {"level": "warn", "message": "tracking degraded"},
+        },
+        "grid_3x2.bin": {
+            "topic": "occupancy_grid", "ts": 1718000005.0, "seq": 9,
+            "grid": {"width": 3, "height": 2, "resolution": 0.05,
+                     "origin": [-1.5, -2.0, 0.0],
+                     "cells": [0, 100, 255, 50, 50, 255]},
         },
         "cmd_set_param.bin": {
             "command": {"cmd": "set_param", "id": 8, "node": "slam",

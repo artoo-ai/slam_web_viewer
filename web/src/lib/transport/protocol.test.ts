@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { decode } from '@msgpack/msgpack'
-import { encodeCommand, toAlignedFloat32 } from './protocol'
+import { decodeGridRle, encodeCommand, toAlignedFloat32 } from './protocol'
 
 const FIXTURES = join(__dirname, '../../../../bridge/tests/fixtures')
 
@@ -52,6 +52,25 @@ describe('golden fixtures (Python -> TS contract)', () => {
     const points = toAlignedFloat32(view)
     expect(points.byteOffset).toBe(0) // aligned: starts at its own buffer
     expect(Array.from(points)).toEqual(exp.points!.flat())
+  })
+
+  it('decodes grid_3x2.bin occupancy grid via RLE', () => {
+    const frame = decodeFixture('grid_3x2.bin')
+    const exp = expected['grid_3x2.bin'] as unknown as {
+      grid: { width: number; height: number; resolution: number; origin: number[]; cells: number[] }
+    }
+    expect(frame.topic).toBe('occupancy_grid')
+    const payload = frame.data as {
+      width: number; height: number; resolution: number
+      origin: number[]; encoding: string; data: Uint8Array
+    }
+    expect(payload.width).toBe(exp.grid.width)
+    expect(payload.height).toBe(exp.grid.height)
+    expect(payload.resolution).toBe(exp.grid.resolution)
+    expect(payload.origin).toEqual(exp.grid.origin)
+    expect(payload.encoding).toBe('rle')
+    const cells = decodeGridRle(payload.data, payload.width * payload.height)
+    expect(Array.from(cells)).toEqual(exp.grid.cells)
   })
 
   it('encodes set_param identically to the Python fixture', () => {

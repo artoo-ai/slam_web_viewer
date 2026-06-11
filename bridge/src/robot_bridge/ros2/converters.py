@@ -46,6 +46,28 @@ def pointcloud2_to_xyzi(msg, *, decimate: int = 1,
     return np.ascontiguousarray(out)
 
 
+def occupancygrid_to_grid(msg) -> dict:
+    """Convert a nav_msgs/msg/OccupancyGrid to the wire payload's components.
+
+    Returns kwargs for protocol.occupancy_grid_payload: width, height,
+    resolution, origin (x, y, theta from the origin quaternion's yaw), cells.
+    """
+    import math
+
+    info = msg.info
+    q = info.origin.orientation
+    theta = math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                       1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+    cells = np.asarray(msg.data, dtype=np.int8)
+    return {
+        "width": int(info.width),
+        "height": int(info.height),
+        "resolution": float(info.resolution),
+        "origin": (float(info.origin.position.x), float(info.origin.position.y), theta),
+        "cells": cells,
+    }
+
+
 def odometry_to_pose(msg) -> tuple[tuple[float, float, float],
                                    tuple[float, float, float, float]]:
     """Convert a nav_msgs/msg/Odometry to (position, quaternion) tuples."""

@@ -26,6 +26,7 @@ CH_STATS = "stats"
 CH_LOG = "log"
 CH_STATUS = "status"
 CH_CMD_ACK = "cmd_ack"
+CH_OCCUPANCY_GRID = "occupancy_grid"
 
 # Reserved channels (documented in docs/protocol.md, implemented in later slices)
 RESERVED_CHANNELS = (
@@ -36,7 +37,6 @@ RESERVED_CHANNELS = (
     "processing",
     "velocity",
     "loop_closure",
-    "occupancy_grid",
     "nav_path",
     "nav_status",
 )
@@ -138,6 +138,61 @@ def status_payload(event: str, label: str | None = None, count: int | None = Non
     if count is not None:
         payload["count"] = count
     return payload
+
+
+def pack_grid_rle(cells: np.ndarray) -> bytes:
+    """RLE-encode an occupancy grid (flat int8/uint8 array, row-major).
+
+    Records of 3 bytes: [uint8 value, uint16 LE run_length], run_length 1..65535.
+    int8 -1 (ROS unknown) is stored as uint8 255.
+    """
+    if cells.ndim != 1:
+        raise ValueError(f"grid must be flat, got shape {cells.shape}")
+    if cells.dtype not in (np.int8, np.uint8):
+        raise ValueError(f"grid must be int8/uint8, got {cells.dtype}")
+    vals = cells.view(np.uint8)
+    if len(vals) == 0:
+        return b""
+    # run boundaries
+    edges = np.flatnonzero(np.diff(vals)) + 1
+    starts = np.concatenate(([0], edges))
+    lengths = np.diff(np.concatenate((starts, [len(vals)])))
+    out = bytearray()
+    for value, length in zip(vals[starts], lengths):
+        length = int(length)
+        while length > 0:
+            chunk = min(length, 0xFFFF)
+            out.append(int(value))
+            out += chunk.to_bytes(2, "little")
+            length -= chunk
+    return bytes(out)
+
+
+def unpack_grid_rle(data: bytes, n_cells: int) -> np.ndarray:
+    """Inverse of pack_grid_rle -> flat uint8 array (255 = unknown). Tests/debug."""
+    if len(data) % 3 != 0:
+        raise ValueError(f"RLE payload length {len(data)} not a multiple of 3")
+    records = np.frombuffer(data, dtype=np.uint8).reshape(-1, 3)
+    values = records[:, 0]
+    lengths = records[:, 1].astype(np.uint32) | (records[:, 2].astype(np.uint32) << 8)
+    out = np.repeat(values, lengths)
+    if len(out) != n_cells:
+        raise ValueError(f"RLE decoded {len(out)} cells, expected {n_cells}")
+    return out
+
+
+def occupancy_grid_payload(*, width: int, height: int, resolution: float,
+                           origin: tuple[float, float, float],
+                           cells: np.ndarray) -> dict:
+    """Build the occupancy_grid map payload from flat row-major int8/uint8 cells."""
+    return {
+        "width": width,
+        "height": height,
+        "resolution": resolution,
+        "origin": list(origin),
+        "encoding": "rle",
+        "data": pack_grid_rle(cells),
+    }
 
 
 def param_ack_payload(cmd_id: int, node: str, accepted: dict, rejected: dict) -> dict:

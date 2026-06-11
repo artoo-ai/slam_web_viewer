@@ -47,6 +47,26 @@ Every message is a MessagePack map:
 | `log` | event | map `{ "level": "debug"\|"info"\|"warn"\|"error", "message": str }` |
 | `status` | event | map `{ "event": str, "label"?: str, "count"?: uint }` — e.g. `loop_closure`, `tracking_lost`. Feeds TTS later. |
 | `cmd_ack` | reply | map — reply to a command, correlated by `id` (see Commands) |
+| `occupancy_grid` | ~0.5 Hz / on change | map — see below |
+
+`occupancy_grid` payload:
+
+```jsonc
+{
+  "width": 260,            // cells
+  "height": 160,           // cells
+  "resolution": 0.05,      // meters per cell
+  "origin": [x, y, theta], // map-frame pose of cell (0,0)'s corner (ROS convention)
+  "encoding": "rle",
+  "data": bin              // RLE-encoded cells, row-major from origin
+}
+```
+
+Cell values match ROS `nav_msgs/OccupancyGrid`: `0..100` = occupancy probability,
+`255` (int8 `-1` cast to uint8) = unknown.
+
+RLE encoding: a sequence of 3-byte records `[uint8 value, uint16 LE run_length]`,
+run_length 1..65535. The decoded cell count MUST equal `width * height`.
 
 `hello` payload:
 
@@ -70,7 +90,6 @@ Every message is a MessagePack map:
 | `processing` | map `{ "frame_ms": float, "icp_mean": float, "icp_std": float }` |
 | `velocity` | map `{ "linear_ms": float, "angular_degs": float }` |
 | `loop_closure` | map `{ "src_kf": uint, "dst_kf": uint, "error": float, "detector": str, "accepted": bool }` |
-| `occupancy_grid` | map `{ "width": uint, "height": uint, "resolution": float, "origin": [x,y,theta], "encoding": "rle"\|"png", "data": bin }` |
 | `nav_path` | map `{ "frame": str, "poses": bin float32 [x,y,theta] × N }` |
 | `nav_status` | map `{ "state": str, "goal_id"?: str, "eta_s"?: float, "message"?: str }` |
 

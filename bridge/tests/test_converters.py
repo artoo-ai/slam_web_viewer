@@ -7,6 +7,7 @@ import pytest
 
 from robot_bridge.ros2.converters import (
     FLOAT32,
+    occupancygrid_to_grid,
     odometry_to_pose,
     pointcloud2_to_xyzi,
     stamp_to_seconds,
@@ -84,6 +85,26 @@ def test_odometry_to_pose():
     p, q = odometry_to_pose(msg)
     assert p == (1.0, 2.0, 0.3)
     assert q == (0.0, 0.0, 0.7071, 0.7071)
+
+
+def test_occupancygrid_to_grid():
+    # 90 deg yaw quaternion: z = sin(45deg), w = cos(45deg)
+    import math
+    s45 = math.sin(math.pi / 4)
+    msg = SimpleNamespace(
+        info=SimpleNamespace(
+            width=3, height=2, resolution=0.05,
+            origin=SimpleNamespace(
+                position=SimpleNamespace(x=-1.5, y=-2.0, z=0.0),
+                orientation=SimpleNamespace(x=0.0, y=0.0, z=s45, w=s45))),
+        data=[0, 100, -1, 50, 50, -1],
+    )
+    grid = occupancygrid_to_grid(msg)
+    assert (grid["width"], grid["height"], grid["resolution"]) == (3, 2, 0.05)
+    assert grid["origin"][0] == -1.5 and grid["origin"][1] == -2.0
+    assert grid["origin"][2] == pytest.approx(math.pi / 2)
+    assert grid["cells"].dtype == np.int8
+    np.testing.assert_array_equal(grid["cells"].view(np.uint8), [0, 100, 255, 50, 50, 255])
 
 
 def test_stamp_to_seconds():

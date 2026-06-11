@@ -3,6 +3,7 @@ import { Grid, OrbitControls } from '@react-three/drei'
 import { PointCloudViewer } from './PointCloudViewer'
 import { TrajectoryOverlay } from './TrajectoryOverlay'
 import { RobotPoseGlyph } from './RobotPoseGlyph'
+import { OccupancyGridLayer } from './OccupancyGridLayer'
 
 /** The 3D scene. World is REP-103 z-up — camera.up must be set before
  *  OrbitControls initializes, hence via the camera prop. */
@@ -29,6 +30,7 @@ export function ViewportCanvas() {
       <PointCloudViewer />
       <TrajectoryOverlay />
       <RobotPoseGlyph />
+      <OccupancyGridLayer />
     </Canvas>
   )
 }

@@ -15,13 +15,14 @@ import numpy as np
 
 from .. import protocol
 from ..server import BridgeServer, Client
+from .grid import RESOLUTION, ExplorationGrid
 from .scan import ScanSynthesizer
 from .trajectory import LOOP_LENGTH, pose_at
 from .world import build_world
 
 log = logging.getLogger("robot_bridge.mock")
 
-CHANNELS = ["scan", "pose", "stats", "log", "status"]
+CHANNELS = ["scan", "pose", "stats", "log", "status", "occupancy_grid"]
 
 
 class MockBridge:
@@ -33,6 +34,7 @@ class MockBridge:
         planes, boxes, cylinders = build_world()
         self.synth = ScanSynthesizer(planes, boxes, cylinders,
                                      np.random.default_rng(args.seed))
+        self.grid = ExplorationGrid(planes, boxes, cylinders)
         self.t0 = time.time()
         self.total_pts = 0
         self.last_lap = 0
@@ -102,6 +104,20 @@ class MockBridge:
                 health=round(health, 3),
                 clients=len(self.server.clients)))
 
+    async def grid_loop(self):
+        """Reveal the map around the robot and broadcast at 0.5 Hz — simulates
+        slam_toolbox building a map during frontier exploration."""
+        while True:
+            pos, _, _ = pose_at(self.distance())
+            self.grid.reveal(pos[0], pos[1])
+            self.server.broadcast(
+                protocol.CH_OCCUPANCY_GRID,
+                protocol.occupancy_grid_payload(
+                    width=self.grid.width, height=self.grid.height,
+                    resolution=RESOLUTION, origin=self.grid.origin,
+                    cells=self.grid.snapshot()))
+            await asyncio.sleep(2.0)
+
     async def chatter_loop(self):
         """Occasional informational log lines so the log panel has life."""
         messages = [
@@ -123,6 +139,7 @@ class MockBridge:
             self.scan_loop(),
             self.pose_loop(),
             self.stats_loop(),
+            self.grid_loop(),
             self.chatter_loop(),
         )
 

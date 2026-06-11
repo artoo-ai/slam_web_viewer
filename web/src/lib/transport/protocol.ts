@@ -13,6 +13,7 @@ export const CH = {
   LOG: 'log',
   STATUS: 'status',
   CMD_ACK: 'cmd_ack',
+  OCCUPANCY_GRID: 'occupancy_grid',
 } as const
 
 export const SCAN_STRIDE_FLOATS = 4 // x, y, z, intensity
@@ -51,5 +52,25 @@ export function encodeCommand(command: Command): Uint8Array {
 export function toAlignedFloat32(view: Uint8Array): Float32Array {
   const out = new Float32Array(view.byteLength / 4)
   new Uint8Array(out.buffer).set(view)
+  return out
+}
+
+/** Cell value for "unknown" in decoded occupancy grids (ROS int8 -1 as uint8). */
+export const GRID_UNKNOWN = 255
+
+/** Decode the occupancy_grid RLE payload: 3-byte records [uint8 value, uint16 LE
+ *  run]. Returns a flat row-major Uint8Array of exactly nCells (0..100, 255). */
+export function decodeGridRle(data: Uint8Array, nCells: number): Uint8Array {
+  if (data.byteLength % 3 !== 0) throw new Error(`RLE length ${data.byteLength} not multiple of 3`)
+  const out = new Uint8Array(nCells)
+  let cell = 0
+  for (let i = 0; i < data.byteLength; i += 3) {
+    const value = data[i]
+    const run = data[i + 1] | (data[i + 2] << 8)
+    if (cell + run > nCells) throw new Error('RLE overflows grid')
+    out.fill(value, cell, cell + run)
+    cell += run
+  }
+  if (cell !== nCells) throw new Error(`RLE decoded ${cell} cells, expected ${nCells}`)
   return out
 }

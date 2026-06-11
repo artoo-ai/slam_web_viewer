@@ -11,11 +11,13 @@ import { useConnectionStore } from '../../stores/connectionStore'
 import { useTelemetryStore } from '../../stores/telemetryStore'
 import { scanFeed } from '../../stores/scanFeed'
 import { poseFeed } from '../../stores/poseFeed'
+import { gridFeed } from '../../stores/gridFeed'
 import type {
   CmdAckPayload,
   DecodedFrame,
   HelloPayload,
   LogPayload,
+  OccupancyGridPayload,
   PosePayload,
   StatsPayload,
   StatusPayload,
@@ -96,6 +98,9 @@ class Connection {
         break
       case CH.POSE:
         poseFeed.push(frame.data as PosePayload)
+        break
+      case CH.OCCUPANCY_GRID:
+        gridFeed.push(frame.data as OccupancyGridPayload)
         break
       case CH.HELLO:
         useConnectionStore.getState().setHello(frame.data as HelloPayload)

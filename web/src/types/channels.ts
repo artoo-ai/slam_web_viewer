@@ -53,6 +53,16 @@ export interface ParamAck {
 
 export type CmdAckPayload = PongAck | ParamAck | { cmd: string; id: number }
 
+export interface OccupancyGridPayload {
+  width: number
+  height: number
+  resolution: number
+  /** map-frame pose of cell (0,0)'s corner: [x, y, theta] */
+  origin: [number, number, number]
+  encoding: 'rle'
+  data: Uint8Array
+}
+
 /** A decoded frame as posted from the decoder worker to the main thread. */
 export interface DecodedFrame {
   topic: string

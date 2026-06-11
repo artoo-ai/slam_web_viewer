@@ -24,6 +24,12 @@ def test_fixture_decodes_to_expected(name):
     if "points" in exp:
         pts = protocol.unpack_scan(frame["data"])
         np.testing.assert_array_equal(pts, np.array(exp["points"], dtype=np.float32))
+    elif "grid" in exp:
+        g, d = exp["grid"], frame["data"]
+        assert (d["width"], d["height"], d["resolution"], d["origin"], d["encoding"]) == \
+               (g["width"], g["height"], g["resolution"], g["origin"], "rle")
+        cells = protocol.unpack_grid_rle(d["data"], g["width"] * g["height"])
+        np.testing.assert_array_equal(cells, g["cells"])
     else:
         assert frame["data"] == exp["data"]
 

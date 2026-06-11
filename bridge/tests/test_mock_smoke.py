@@ -56,6 +56,12 @@ async def test_mock_protocol_flow(mock_url):
 
         scans = [f for f in frames if f["topic"] == "scan"]
         poses = [f for f in frames if f["topic"] == "pose"]
+        grids = [f for f in frames if f["topic"] == "occupancy_grid"]
+        if grids:  # 0.5 Hz — may or may not land in the 1.2 s window
+            g = grids[0]["data"]
+            cells = protocol.unpack_grid_rle(g["data"], g["width"] * g["height"])
+            assert set(np.unique(cells)) <= {0, 100, 255}
+            assert (cells != 255).any(), "some cells should be revealed"
         assert 8 <= len(scans) <= 16, f"expected ~10-12 scans in 1.2s, got {len(scans)}"
         assert len(poses) >= 15, f"expected ~24 poses in 1.2s, got {len(poses)}"
 
