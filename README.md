@@ -58,8 +58,12 @@ Run (after the SLAM stack is up — livox_ros_driver2, FAST-LIO2):
 ```bash
 source /opt/ros/humble/setup.bash
 cd ~/robot_gui/bridge
-.venv/bin/python -m robot_bridge.ros2 --host 0.0.0.0 --port 9090
-# options: --decimate 2        keep every 2nd point if the stream is too heavy
+# 3D stack (start_fast_lio.sh / start_rtabmap.sh):
+.venv/bin/python -m robot_bridge.ros2 --stack 3d
+# 2D stack (start_slam_2d.sh / start_explore_2d.sh) — pose + occupancy grid, no point cloud:
+.venv/bin/python -m robot_bridge.ros2 --stack 2d
+# options: --scan-topic/--odom-topic/--map-topic   override preset ('' disables)
+#          --decimate 2        keep every 2nd point if the stream is too heavy
 #          --intensity-scale   raw intensity -> 0..1 (default 1/255 for Livox reflectivity)
 ```
 
