@@ -57,6 +57,8 @@ case "$MODE" in
             echo "             Use './start_bridge.sh mock' on machines without ROS2." >&2
             exit 1
         fi
+        # ROS2 setup scripts reference unset variables — drop nounset while sourcing
+        set +u
         # shellcheck disable=SC1090
         source "$ROS_SETUP"
         # workspace overlay (custom messages not required, but harmless and
@@ -65,6 +67,7 @@ case "$MODE" in
             # shellcheck disable=SC1091
             source "$HOME/slam_ws/install/setup.bash"
         fi
+        set -u
         ensure_venv "$BRIDGE_DIR/.venv-ros" --system-site-packages
         if ! "$BRIDGE_DIR/.venv-ros/bin/python" -c "import rclpy" &>/dev/null; then
             echo "start_bridge: ERROR — venv cannot import rclpy even with ROS sourced." >&2

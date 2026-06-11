@@ -19,8 +19,11 @@ if [[ ! -f "$ROS_SETUP" ]]; then
     echo "       On a dev machine without ROS2, run ./install_mac.sh instead." >&2
     exit 1
 fi
+# ROS2 setup scripts reference unset variables — drop nounset while sourcing
+set +u
 # shellcheck disable=SC1090
 source "$ROS_SETUP"
+set -u
 
 if ! command -v python3 &>/dev/null; then
     echo "ERROR: python3 not found." >&2
