@@ -37,8 +37,12 @@ npm run dev
 ```
 
 Open http://localhost:5173 — you should see a live synthetic point-cloud room, the robot's
-trajectory, and status/stats/log panels. The viewer connects to `ws://localhost:9090` by default;
-override with `?ws=ws://host:port` or `VITE_BRIDGE_URL`.
+trajectory, and the full panel stack: camera (MJPEG from `:8080/stream/rgb`, `?cam=` overrides),
+layer toggles (map / costmaps / path), rotation tracking with the map-smear alarm, navigation
+(double-click the floor to send a goal), parameters (point size, intensity/height color mode,
+remote set_param), IMU, stats, and log. The viewer connects to `ws://localhost:9090` by default;
+override with `?ws=ws://host:port` or `VITE_BRIDGE_URL`. Voice alerts (Web Speech) are opt-in via
+the Parameters panel.
 
 ## Live data (Jetson + ROS2 Humble)
 
