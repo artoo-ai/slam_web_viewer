@@ -2,11 +2,12 @@
 name = "robot-bridge"
 version = "0.1.0"
 description = "WebSocket bridge + mock data generator for the robot GUI viewer"
-requires-python = ">=3.11"
+# 3.10 floor: Jetson Orin (JetPack 6 / Ubuntu 22.04) ships Python 3.10
+requires-python = ">=3.10"
 dependencies = [
-    "websockets>=16.0",
-    "msgpack>=1.1.2",
-    "numpy>=2.0",
+    "websockets>=15.0",
+    "msgpack>=1.0.5",
+    "numpy>=1.21",
 ]
 
 [project.optional-dependencies]

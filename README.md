@@ -18,18 +18,21 @@ robot-side during the MVP phase and can be replaced later by touching only the b
 
 ## Quickstart (no robot needed)
 
-Terminal 1 — mock data generator (synthesizes a room, a moving robot, LiDAR scans):
+```bash
+./install_mac.sh        # once: bridge deps (uv or venv) + npm install
+```
+
+Terminal 1 — mock data generator (synthesizes a room, a moving robot, LiDAR scans,
+and a progressively-explored occupancy grid):
 
 ```bash
-cd bridge
-uv run python -m robot_bridge.mock
+./start_bridge.sh mock
 ```
 
 Terminal 2 — web viewer:
 
 ```bash
 cd web
-npm install
 npm run dev
 ```
 
@@ -42,29 +45,26 @@ override with `?ws=ws://host:port` or `VITE_BRIDGE_URL`.
 The rclpy bridge subscribes to FAST-LIO2 (`/cloud_registered_body`, `/Odometry`) and republishes
 over the same wire protocol — the viewer doesn't change at all.
 
-One-time setup on the Jetson (rclpy comes from the sourced ROS2 env, so the venv must see system
-site-packages — plain `uv run` would hide it):
+One-time setup on the Jetson (creates `bridge/.venv-ros` with `--system-site-packages` so rclpy
+from the ROS2 env stays importable):
 
 ```bash
-# copy the repo over (no remote yet): rsync -a --exclude node_modules --exclude .venv \
+# copy the repo over (no remote yet): rsync -a --exclude node_modules --exclude '.venv*' \
 #   ~/Documents/Robots/robot_gui/ jetson@gizmo.local:~/robot_gui/
-cd ~/robot_gui/bridge
-python3 -m venv --system-site-packages .venv
-.venv/bin/pip install -e .
+cd ~/robot_gui
+./install_jetson.sh
 ```
 
-Run (after the SLAM stack is up — livox_ros_driver2, FAST-LIO2):
+Run (after the SLAM stack is up). `start_bridge.sh` sources ROS2 and bootstraps the venv itself,
+so it also works standalone without the install step:
 
 ```bash
-source /opt/ros/humble/setup.bash
-cd ~/robot_gui/bridge
-# 3D stack (start_fast_lio.sh / start_rtabmap.sh):
-.venv/bin/python -m robot_bridge.ros2 --stack 3d
-# 2D stack (start_slam_2d.sh / start_explore_2d.sh) — pose + occupancy grid, no point cloud:
-.venv/bin/python -m robot_bridge.ros2 --stack 2d
-# options: --scan-topic/--odom-topic/--map-topic   override preset ('' disables)
-#          --decimate 2        keep every 2nd point if the stream is too heavy
-#          --intensity-scale   raw intensity -> 0..1 (default 1/255 for Livox reflectivity)
+cd ~/robot_gui
+./start_bridge.sh 2d    # slam_toolbox stack (start_slam_2d.sh / start_explore_2d.sh)
+./start_bridge.sh 3d    # FAST-LIO2/RTABMap stack (start_fast_lio.sh / start_rtabmap.sh)
+# extra args pass through, e.g.:
+#   ./start_bridge.sh 3d --decimate 2          lighter point stream over WiFi
+#   ./start_bridge.sh 2d --map-topic /my_map   override a preset topic ('' disables)
 ```
 
 Then on the Mac, point the viewer at the robot:
