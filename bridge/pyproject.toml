@@ -16,7 +16,7 @@ ros2 = []
 mjpeg = ["pillow>=10"]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pytest-asyncio>=0.25"]
 
 [build-system]
 requires = ["hatchling"]
@@ -27,3 +27,4 @@ packages = ["src/robot_bridge"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
