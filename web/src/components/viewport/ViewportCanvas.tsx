@@ -4,6 +4,7 @@ import { PointCloudViewer } from './PointCloudViewer'
 import { TrajectoryOverlay } from './TrajectoryOverlay'
 import { RobotPoseGlyph } from './RobotPoseGlyph'
 import { OccupancyGridLayer } from './OccupancyGridLayer'
+import { GoalClickPlane, GoalMarker } from './GoalControls'
 
 /** The 3D scene. World is REP-103 z-up — camera.up must be set before
  *  OrbitControls initializes, hence via the camera prop. */
@@ -31,6 +32,8 @@ export function ViewportCanvas() {
       <TrajectoryOverlay />
       <RobotPoseGlyph />
       <OccupancyGridLayer />
+      <GoalClickPlane />
+      <GoalMarker />
     </Canvas>
   )
 }

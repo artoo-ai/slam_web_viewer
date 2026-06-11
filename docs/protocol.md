@@ -48,6 +48,7 @@ Every message is a MessagePack map:
 | `status` | event | map `{ "event": str, "label"?: str, "count"?: uint }` — e.g. `loop_closure`, `tracking_lost`. Feeds TTS later. |
 | `cmd_ack` | reply | map — reply to a command, correlated by `id` (see Commands) |
 | `occupancy_grid` | ~0.5 Hz / on change | map — see below |
+| `nav_status` | event + ~2 Hz while navigating | map `{ "state": "accepted"\|"navigating"\|"succeeded"\|"aborted"\|"canceled"\|"rejected", "goal_id"?: str, "distance_m"?: float, "eta_s"?: float, "message"?: str }` |
 
 `occupancy_grid` payload:
 
@@ -91,7 +92,6 @@ run_length 1..65535. The decoded cell count MUST equal `width * height`.
 | `velocity` | map `{ "linear_ms": float, "angular_degs": float }` |
 | `loop_closure` | map `{ "src_kf": uint, "dst_kf": uint, "error": float, "detector": str, "accepted": bool }` |
 | `nav_path` | map `{ "frame": str, "poses": bin float32 [x,y,theta] × N }` |
-| `nav_status` | map `{ "state": str, "goal_id"?: str, "eta_s"?: float, "message"?: str }` |
 
 ## Commands (browser → robot)
 
@@ -114,11 +114,13 @@ correlation `id` (uint, monotonic per connection). Replies arrive as frames with
   "accepted": { "voxel_size": 0.1 }, "rejected": {} }
 ```
 
-### Reserved
-
 ```jsonc
+// Send a navigation goal (map frame, meters/radians)
 { "cmd": "send_goal", "id": 9, "x": 1.5, "y": 2.0, "theta": 0.0, "frame": "map" }
-// → cmd_ack data: { "cmd": "goal_ack", "id": 9, "goal_id": "g-001", "accepted": true }
+// → cmd_ack data (async — arrives once the planner accepts/rejects):
+{ "cmd": "goal_ack", "id": 9, "goal_id": "g-001", "accepted": true, "message"?: str }
+// progress then flows on the nav_status channel, correlated by goal_id;
+// "succeeded" / "aborted" / "canceled" are terminal.
 
 { "cmd": "cancel_goal", "id": 10, "goal_id": "g-001" }
 // → cmd_ack data: { "cmd": "cancel_ack", "id": 10, "ok": true }

@@ -17,6 +17,7 @@ import type {
   DecodedFrame,
   HelloPayload,
   LogPayload,
+  NavStatusPayload,
   OccupancyGridPayload,
   PosePayload,
   StatsPayload,
@@ -24,6 +25,13 @@ import type {
 } from '../../types/channels'
 
 type Listener = (frame: DecodedFrame) => void
+
+// navStore registers here at import time (it imports this module, so this
+// module cannot import it back without a cycle)
+let navStatusSink: (status: NavStatusPayload) => void = () => {}
+export function setNavStatusSink(sink: (status: NavStatusPayload) => void) {
+  navStatusSink = sink
+}
 
 const BACKOFF_MIN_MS = 500
 const BACKOFF_MAX_MS = 5000
@@ -101,6 +109,9 @@ class Connection {
         break
       case CH.OCCUPANCY_GRID:
         gridFeed.push(frame.data as OccupancyGridPayload)
+        break
+      case CH.NAV_STATUS:
+        navStatusSink(frame.data as NavStatusPayload)
         break
       case CH.HELLO:
         useConnectionStore.getState().setHello(frame.data as HelloPayload)

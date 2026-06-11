@@ -112,6 +112,17 @@
       ]
     }
   },
+  "nav_status.bin": {
+    "topic": "nav_status",
+    "ts": 1718000006.0,
+    "seq": 3,
+    "data": {
+      "state": "navigating",
+      "goal_id": "g-001",
+      "distance_m": 2.5,
+      "eta_s": 6.0
+    }
+  },
   "cmd_set_param.bin": {
     "command": {
       "cmd": "set_param",
@@ -120,6 +131,16 @@
       "params": {
         "voxel_size": 0.1
       }
+    }
+  },
+  "cmd_send_goal.bin": {
+    "command": {
+      "cmd": "send_goal",
+      "id": 9,
+      "x": 1.5,
+      "y": 2.0,
+      "theta": 0.0,
+      "frame": "map"
     }
   }
 }

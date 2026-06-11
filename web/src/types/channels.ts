@@ -51,7 +51,37 @@ export interface ParamAck {
   rejected: Record<string, unknown>
 }
 
-export type CmdAckPayload = PongAck | ParamAck | { cmd: string; id: number }
+export interface GoalAck {
+  cmd: 'goal_ack'
+  id: number
+  goal_id: string
+  accepted: boolean
+  message?: string
+}
+
+export interface CancelAck {
+  cmd: 'cancel_ack'
+  id: number
+  ok: boolean
+}
+
+export type CmdAckPayload = PongAck | ParamAck | GoalAck | CancelAck | { cmd: string; id: number }
+
+export type NavState =
+  | 'accepted'
+  | 'navigating'
+  | 'succeeded'
+  | 'aborted'
+  | 'canceled'
+  | 'rejected'
+
+export interface NavStatusPayload {
+  state: NavState
+  goal_id?: string
+  distance_m?: number
+  eta_s?: number
+  message?: string
+}
 
 export interface OccupancyGridPayload {
   width: number

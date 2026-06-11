@@ -104,3 +104,35 @@ async def test_mock_protocol_flow(mock_url):
                 break
         else:
             pytest.fail("no param_ack received")
+
+        # 7. send_goal -> goal_ack accepted, nav_status navigating, then cancel
+        await ws.send(msgpack.packb(
+            {"cmd": "send_goal", "id": 101, "x": 1.0, "y": 1.0, "theta": 0.0,
+             "frame": "map"}, use_bin_type=True))
+        goal_id = None
+        navigating = False
+        for _ in range(200):
+            f = protocol.parse_frame(await asyncio.wait_for(ws.recv(), 2.0))
+            if f["topic"] == "cmd_ack" and f["data"].get("id") == 101:
+                assert f["data"]["cmd"] == "goal_ack"
+                assert f["data"]["accepted"] is True
+                goal_id = f["data"]["goal_id"]
+            elif f["topic"] == "nav_status" and f["data"]["state"] == "navigating":
+                assert f["data"]["goal_id"] == goal_id
+                assert f["data"]["distance_m"] > 0
+                navigating = True
+                break
+        assert goal_id and navigating, "no goal_ack + navigating status"
+
+        await ws.send(msgpack.packb(
+            {"cmd": "cancel_goal", "id": 102, "goal_id": goal_id}, use_bin_type=True))
+        canceled = False
+        for _ in range(200):
+            f = protocol.parse_frame(await asyncio.wait_for(ws.recv(), 2.0))
+            if f["topic"] == "cmd_ack" and f["data"].get("id") == 102:
+                assert f["data"] == {"cmd": "cancel_ack", "id": 102, "ok": True}
+            elif f["topic"] == "nav_status" and f["data"]["state"] == "canceled":
+                assert f["data"]["goal_id"] == goal_id
+                canceled = True
+                break
+        assert canceled, "no canceled nav_status after cancel_goal"

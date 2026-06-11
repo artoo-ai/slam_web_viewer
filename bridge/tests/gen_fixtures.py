@@ -58,10 +58,18 @@ def main() -> None:
                 width=3, height=2, resolution=0.05, origin=[-1.5, -2.0, 0.0],
                 cells=np.array([0, 100, -1, 50, 50, -1], dtype=np.int8)),
             seq=9, ts=1718000005.0),
+        "nav_status.bin": protocol.make_frame(
+            protocol.CH_NAV_STATUS,
+            protocol.nav_status_payload("navigating", goal_id="g-001",
+                                        distance_m=2.5, eta_s=6.0),
+            seq=3, ts=1718000006.0),
         # browser -> robot command bytes, for the Python side to parse in tests
         "cmd_set_param.bin": msgpack.packb(
             {"cmd": "set_param", "id": 8, "node": "slam", "params": {"voxel_size": 0.1}},
             use_bin_type=True),
+        "cmd_send_goal.bin": msgpack.packb(
+            {"cmd": "send_goal", "id": 9, "x": 1.5, "y": 2.0, "theta": 0.0,
+             "frame": "map"}, use_bin_type=True),
     }
 
     for name, raw in frames.items():
@@ -100,9 +108,18 @@ def main() -> None:
                      "origin": [-1.5, -2.0, 0.0],
                      "cells": [0, 100, 255, 50, 50, 255]},
         },
+        "nav_status.bin": {
+            "topic": "nav_status", "ts": 1718000006.0, "seq": 3,
+            "data": {"state": "navigating", "goal_id": "g-001",
+                     "distance_m": 2.5, "eta_s": 6.0},
+        },
         "cmd_set_param.bin": {
             "command": {"cmd": "set_param", "id": 8, "node": "slam",
                         "params": {"voxel_size": 0.1}},
+        },
+        "cmd_send_goal.bin": {
+            "command": {"cmd": "send_goal", "id": 9, "x": 1.5, "y": 2.0,
+                        "theta": 0.0, "frame": "map"},
         },
     }
     (FIXTURES / "expected.json").write_text(json.dumps(expected, indent=2) + "\n")

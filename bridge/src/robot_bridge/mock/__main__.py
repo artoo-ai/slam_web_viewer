@@ -22,7 +22,7 @@ from .world import build_world
 
 log = logging.getLogger("robot_bridge.mock")
 
-CHANNELS = ["scan", "pose", "stats", "log", "status", "occupancy_grid"]
+CHANNELS = ["scan", "pose", "stats", "log", "status", "occupancy_grid", "nav_status"]
 
 
 class MockBridge:
@@ -39,6 +39,8 @@ class MockBridge:
         self.total_pts = 0
         self.last_lap = 0
         self.scan_count = 0
+        self.goal_seq = 0
+        self.active_goal: dict | None = None  # {"goal_id": str, "cancelled": bool}
 
     # -- distance traveled at "now", at constant --speed
     def distance(self) -> float:
@@ -55,8 +57,56 @@ class MockBridge:
                     cmd.get("id", 0), cmd.get("node", ""), cmd.get("params", {}), {}))
                 self.server.broadcast(protocol.CH_LOG, protocol.log_payload(
                     "info", f"set_param {cmd.get('node')}: {cmd.get('params')}"))
+            case "send_goal":
+                self.goal_seq += 1
+                goal_id = f"g-{self.goal_seq:03d}"
+                if self.active_goal is not None:
+                    self.active_goal["cancelled"] = True  # preempt previous goal
+                self.active_goal = {"goal_id": goal_id, "cancelled": False}
+                await self.server.reply_ack(client, protocol.goal_ack_payload(
+                    cmd.get("id", 0), goal_id, True))
+                asyncio.ensure_future(self._simulate_nav(
+                    self.active_goal, cmd.get("x", 0.0), cmd.get("y", 0.0)))
+            case "cancel_goal":
+                goal = self.active_goal
+                ok = goal is not None and not goal["cancelled"] and \
+                    cmd.get("goal_id") in (None, goal["goal_id"])
+                if ok and goal is not None:
+                    goal["cancelled"] = True
+                await self.server.reply_ack(
+                    client, protocol.cancel_ack_payload(cmd.get("id", 0), ok))
             case other:
                 log.info("ignoring unknown command %r", other)
+
+    async def _simulate_nav(self, goal: dict, gx: float, gy: float):
+        """Pretend to navigate: nav_status at 2 Hz with shrinking distance, then
+        succeeded. The mock robot doesn't actually drive there — its trajectory
+        is fixed — this exercises the protocol and UI."""
+        goal_id = goal["goal_id"]
+        pos, _, _ = pose_at(self.distance())
+        total = max(0.5, float(np.hypot(gx - pos[0], gy - pos[1])))
+        speed = 0.5  # m/s simulated
+        self.server.broadcast(protocol.CH_LOG, protocol.log_payload(
+            "info", f"nav goal {goal_id}: ({gx:.2f}, {gy:.2f}), {total:.1f} m away"))
+        remaining = total
+        while remaining > 0:
+            if goal["cancelled"]:
+                self.server.broadcast(protocol.CH_NAV_STATUS,
+                                      protocol.nav_status_payload("canceled", goal_id))
+                self.server.broadcast(protocol.CH_LOG, protocol.log_payload(
+                    "warn", f"nav goal {goal_id} canceled"))
+                return
+            self.server.broadcast(protocol.CH_NAV_STATUS, protocol.nav_status_payload(
+                "navigating", goal_id,
+                distance_m=round(remaining, 2), eta_s=round(remaining / speed, 1)))
+            await asyncio.sleep(0.5)
+            remaining -= speed * 0.5
+        self.server.broadcast(protocol.CH_NAV_STATUS,
+                              protocol.nav_status_payload("succeeded", goal_id))
+        self.server.broadcast(protocol.CH_LOG, protocol.log_payload(
+            "info", f"nav goal {goal_id} succeeded"))
+        if self.active_goal is goal:
+            self.active_goal = None
 
     async def scan_loop(self):
         period = 1.0 / self.args.scan_hz

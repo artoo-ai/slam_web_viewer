@@ -27,6 +27,7 @@ CH_LOG = "log"
 CH_STATUS = "status"
 CH_CMD_ACK = "cmd_ack"
 CH_OCCUPANCY_GRID = "occupancy_grid"
+CH_NAV_STATUS = "nav_status"
 
 # Reserved channels (documented in docs/protocol.md, implemented in later slices)
 RESERVED_CHANNELS = (
@@ -38,8 +39,9 @@ RESERVED_CHANNELS = (
     "velocity",
     "loop_closure",
     "nav_path",
-    "nav_status",
 )
+
+NAV_STATES = ("accepted", "navigating", "succeeded", "aborted", "canceled", "rejected")
 
 # Channels that must be dropped (never queued) on client backpressure
 DROPPABLE_CHANNELS = frozenset({CH_SCAN, "map", "depth"})
@@ -202,3 +204,34 @@ def param_ack_payload(cmd_id: int, node: str, accepted: dict, rejected: dict) ->
 
 def pong_payload(cmd_id: int, t: float) -> dict:
     return {"cmd": "pong", "id": cmd_id, "t": t}
+
+
+def goal_ack_payload(cmd_id: int, goal_id: str, accepted: bool,
+                     message: str | None = None) -> dict:
+    payload: dict = {"cmd": "goal_ack", "id": cmd_id, "goal_id": goal_id,
+                     "accepted": accepted}
+    if message is not None:
+        payload["message"] = message
+    return payload
+
+
+def cancel_ack_payload(cmd_id: int, ok: bool) -> dict:
+    return {"cmd": "cancel_ack", "id": cmd_id, "ok": ok}
+
+
+def nav_status_payload(state: str, goal_id: str | None = None,
+                       distance_m: float | None = None,
+                       eta_s: float | None = None,
+                       message: str | None = None) -> dict:
+    if state not in NAV_STATES:
+        raise ValueError(f"unknown nav state {state!r}")
+    payload: dict = {"state": state}
+    if goal_id is not None:
+        payload["goal_id"] = goal_id
+    if distance_m is not None:
+        payload["distance_m"] = distance_m
+    if eta_s is not None:
+        payload["eta_s"] = eta_s
+    if message is not None:
+        payload["message"] = message
+    return payload

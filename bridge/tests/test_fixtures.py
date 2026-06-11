@@ -34,6 +34,10 @@ def test_fixture_decodes_to_expected(name):
         assert frame["data"] == exp["data"]
 
 
-def test_command_fixture_parses():
-    cmd = protocol.parse_command((FIXTURES / "cmd_set_param.bin").read_bytes())
-    assert cmd == EXPECTED["cmd_set_param.bin"]["command"]
+COMMAND_FIXTURES = [n for n, e in EXPECTED.items() if "command" in e]
+
+
+@pytest.mark.parametrize("name", COMMAND_FIXTURES)
+def test_command_fixture_parses(name):
+    cmd = protocol.parse_command((FIXTURES / name).read_bytes())
+    assert cmd == EXPECTED[name]["command"]

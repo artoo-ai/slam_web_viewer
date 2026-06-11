@@ -14,6 +14,7 @@ export const CH = {
   STATUS: 'status',
   CMD_ACK: 'cmd_ack',
   OCCUPANCY_GRID: 'occupancy_grid',
+  NAV_STATUS: 'nav_status',
 } as const
 
 export const SCAN_STRIDE_FLOATS = 4 // x, y, z, intensity
@@ -33,7 +34,22 @@ export interface SetParamCommand {
   params: Record<string, unknown>
 }
 
-export type Command = PingCommand | SetParamCommand
+export interface SendGoalCommand {
+  cmd: 'send_goal'
+  id: number
+  x: number
+  y: number
+  theta: number
+  frame: 'map'
+}
+
+export interface CancelGoalCommand {
+  cmd: 'cancel_goal'
+  id: number
+  goal_id?: string
+}
+
+export type Command = PingCommand | SetParamCommand | SendGoalCommand | CancelGoalCommand
 
 /** Omit that distributes over unions (plain Omit collapses Command to common keys). */
 export type DistributiveOmit<T, K extends keyof never> = T extends unknown
