@@ -68,10 +68,24 @@ class Ros2Bridge:
                     "nav_path", "velocity", "imu"]
         if args.scan_topic:
             channels += ["scan", "map"]
+        if args.detections_topic:
+            channels.append("objects")
         self.mapacc = MapAccumulator(voxel_size=args.map_voxel)
+        # semantic object memory: cluster detections by label+position
+        self.objects: list[dict] = []
+        self._latest_jpeg: bytes | None = None
+        self.cameras: dict[str, str] = {}  # stream name -> Image topic (1-4)
+        if args.camera:
+            for spec in args.camera[:4]:
+                name, _, topic = spec.partition("=")
+                if topic:
+                    self.cameras[name] = topic
+        elif args.camera_topic:
+            self.cameras["rgb"] = args.camera_topic
         self.server = BridgeServer(
-            server_name="ros2", channels=channels, app_version="0.1.0",
-            command_handler=self.on_command)
+            server_name=args.name, channels=channels, app_version="0.1.0",
+            command_handler=self.on_command,
+            cameras=list(self.cameras) if args.mjpeg_port else [])
         self.loop: asyncio.AbstractEventLoop | None = None
 
         # live stats (written by ROS thread, read by asyncio stats loop — plain
@@ -95,7 +109,7 @@ class Ros2Bridge:
 
         # camera
         self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
-        self._last_jpeg_t = 0.0
+        self._last_jpeg_t: dict[str, float] = {}
         self._last_imu_t = 0.0
 
         # nav state
@@ -160,18 +174,29 @@ class Ros2Bridge:
             node.create_subscription(Twist, self.args.cmd_vel_topic,
                                      self.on_cmd_vel, 10)
             subscribed.append(self.args.cmd_vel_topic)
+        if self.args.detections_topic:
+            try:
+                from vision_msgs.msg import Detection3DArray
+                node.create_subscription(Detection3DArray, self.args.detections_topic,
+                                         self.on_detections, 10)
+                subscribed.append(self.args.detections_topic)
+            except ImportError:
+                log.warning("vision_msgs not available — object mapping disabled")
         if self.args.imu_topic:
             from sensor_msgs.msg import Imu
             from rclpy.qos import qos_profile_sensor_data
             node.create_subscription(Imu, self.args.imu_topic, self.on_imu,
                                      qos_profile_sensor_data)
             subscribed.append(self.args.imu_topic)
-        if self.mjpeg is not None and self.args.camera_topic:
+        if self.mjpeg is not None and self.cameras:
             from sensor_msgs.msg import Image
             from rclpy.qos import qos_profile_sensor_data
-            node.create_subscription(Image, self.args.camera_topic,
-                                     self.on_image, qos_profile_sensor_data)
-            subscribed.append(self.args.camera_topic)
+            for name, topic in self.cameras.items():
+                node.create_subscription(
+                    Image, topic,
+                    lambda msg, n=name: self.on_image(msg, n),
+                    qos_profile_sensor_data)
+                subscribed.append(f"{topic} (cam:{name})")
 
         # TF listener: local costmap origins arrive in the odom frame and must
         # be re-expressed in map (the wire protocol's only frame)
@@ -267,6 +292,55 @@ class Ros2Bridge:
         self.cmd_vel = (float(msg.linear.x), float(msg.angular.z))
         self.cmd_vel_t = time.monotonic()
 
+    def on_detections(self, msg) -> None:
+        """vision_msgs/Detection3DArray -> persistent object memory.
+
+        Detections in a non-map frame ride TF; same-label hits within
+        MERGE_RADIUS update the existing object (count/confidence/last_seen),
+        otherwise a new object is created with the latest camera JPEG as its
+        thumbnail (Roborock-style object-on-map).
+        """
+        MERGE_RADIUS = 0.75
+        frame = msg.header.frame_id
+        tq = None
+        if frame and frame != "map":
+            tq = self._lookup_map_tf(frame)
+            if tq is None:
+                return
+        changed = False
+        now = time.time()
+        for det in msg.detections:
+            if not det.results:
+                continue
+            hyp = max(det.results, key=lambda r: r.hypothesis.score)
+            label = str(hyp.hypothesis.class_id)
+            c = det.bbox.center.position
+            p = [c.x, c.y, c.z]
+            if tq is not None:
+                import numpy as np
+                p = transform_xyzi(
+                    np.array([[p[0], p[1], p[2], 0]], dtype=np.float32), *tq)[0, :3].tolist()
+            for obj in self.objects:
+                if obj["label"] == label and \
+                        math.hypot(obj["p"][0] - p[0], obj["p"][1] - p[1]) < MERGE_RADIUS:
+                    obj["count"] += 1
+                    obj["last_seen"] = now
+                    obj["confidence"] = max(obj["confidence"], float(hyp.hypothesis.score))
+                    changed = True
+                    break
+            else:
+                obj = {"id": f"obj-{len(self.objects) + 1}", "label": label,
+                       "confidence": float(hyp.hypothesis.score), "p": p,
+                       "count": 1, "last_seen": now}
+                if self._latest_jpeg is not None:
+                    obj["thumb"] = self._latest_jpeg
+                self.objects.append(obj)
+                changed = True
+                self._post(protocol.CH_STATUS,
+                           protocol.status_payload("object_detected", label=label, count=1))
+        if changed:
+            self._post(protocol.CH_OBJECTS, protocol.objects_payload(self.objects))
+
     def on_imu(self, msg) -> None:
         """Mid-360 IMU at 200 Hz -> decimate to 10 Hz. Orientation included only
         if the driver fuses one (all-zero quaternion means none)."""
@@ -283,12 +357,12 @@ class Ros2Bridge:
             angular_vel=(g.x, g.y, g.z), linear_accel=(a.x, a.y, a.z),
             orientation=orientation), stamp_to_seconds(msg.header.stamp))
 
-    def on_image(self, msg) -> None:
-        """D435 color Image -> JPEG, decimated to the MJPEG fps."""
+    def on_image(self, msg, name: str = "rgb") -> None:
+        """Camera Image -> JPEG, decimated to the MJPEG fps (per stream)."""
         now = time.monotonic()
-        if now - self._last_jpeg_t < 1.0 / self.mjpeg.fps:
+        if now - self._last_jpeg_t.get(name, 0.0) < 1.0 / self.mjpeg.fps:
             return
-        self._last_jpeg_t = now
+        self._last_jpeg_t[name] = now
         import io
 
         import numpy as np
@@ -302,7 +376,10 @@ class Ros2Bridge:
             return  # unsupported encoding — D435 color is rgb8 by default
         buf = io.BytesIO()
         PilImage.fromarray(arr, "RGB").save(buf, format="JPEG", quality=80)
-        self.mjpeg.set_frame(buf.getvalue())
+        jpeg = buf.getvalue()
+        self.mjpeg.set_frame(jpeg, name)
+        if name == "rgb":
+            self._latest_jpeg = jpeg  # thumbnail source for new objects
 
     def on_costmap(self, msg, layer: str) -> None:
         grid = occupancygrid_to_grid(msg)
@@ -506,6 +583,18 @@ class Ros2Bridge:
                 goal_id = cmd.get("goal_id")
                 self._ros_jobs.put(
                     lambda: self._ros_cancel_goal(cmd_id, client, goal_id))
+            case "map_save":
+                try:
+                    info = self.mapacc.save_qpc(
+                        cmd.get("path") or f"maps/map_{int(time.time())}.qpc")
+                    await self.server.reply_ack(client, {
+                        "cmd": "map_save_ack", "id": cmd.get("id", 0), "ok": True, **info})
+                    self.log_clients("info", f"map saved: {info['path']} "
+                                             f"({info['points']:,} pts)")
+                except (ValueError, OSError) as e:
+                    await self.server.reply_ack(client, {
+                        "cmd": "map_save_ack", "id": cmd.get("id", 0), "ok": False,
+                        "message": str(e)})
             case other:
                 log.info("ignoring unknown command %r", other)
 
@@ -555,6 +644,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="ROS2 -> WebSocket viewer bridge")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=9090)
+    parser.add_argument("--name", default="ros2",
+                        help="platform name shown in the viewer header "
+                             "(e.g. go2, indoor-rover, r2d2, roboscout)")
     parser.add_argument("--stack", choices=sorted(STACK_PRESETS), default="3d",
                         help="topic preset: 3d (FAST-LIO2/RTABMap) or 2d (slam_toolbox)")
     parser.add_argument("--scan-topic", default=None,
@@ -576,10 +668,14 @@ def main() -> None:
                         help="Nav2 global plan nav_msgs/Path ('' disables)")
     parser.add_argument("--cmd-vel-topic", default="/cmd_vel",
                         help="commanded Twist for the velocity channel ('' disables)")
+    parser.add_argument("--detections-topic", default="",
+                        help="vision_msgs/Detection3DArray for object mapping ('' disables)")
     parser.add_argument("--imu-topic", default="/livox/imu",
                         help="sensor_msgs/Imu topic, decimated to 10 Hz ('' disables)")
     parser.add_argument("--camera-topic", default="/camera/camera/color/image_raw",
-                        help="D435 color sensor_msgs/Image for MJPEG ('' disables)")
+                        help="single-camera shorthand: rgb stream Image topic ('' disables)")
+    parser.add_argument("--camera", action="append", default=None, metavar="NAME=TOPIC",
+                        help="named camera stream (repeatable, up to 4); overrides --camera-topic")
     parser.add_argument("--mjpeg-port", type=int, default=8080,
                         help="MJPEG camera port (0 disables)")
     parser.add_argument("--decimate", type=int, default=1,

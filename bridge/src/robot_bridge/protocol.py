@@ -32,6 +32,7 @@ CH_NAV_PATH = "nav_path"
 CH_VELOCITY = "velocity"
 CH_IMU = "imu"
 CH_MAP = "map"  # accumulated-map delta: bin float32 [x,y,z,intensity]*N, map frame
+CH_OBJECTS = "objects"  # persistent semantic objects with thumbnails
 
 GRID_LAYERS = ("map", "costmap_global", "costmap_local")
 
@@ -104,13 +105,17 @@ def unpack_scan(data: bytes) -> np.ndarray:
 # Payload builders (map payloads)
 # ---------------------------------------------------------------------------
 
-def hello_payload(server: str, channels: list[str], app_version: str) -> dict:
-    return {
+def hello_payload(server: str, channels: list[str], app_version: str,
+                  cameras: list[str] | None = None) -> dict:
+    payload = {
         "protocol": PROTOCOL_VERSION,
         "server": server,
         "channels": channels,
         "app_version": app_version,
     }
+    if cameras:
+        payload["cameras"] = cameras  # MJPEG stream names at :8080/stream/<name>
+    return payload
 
 
 def pose_payload(p: tuple[float, float, float], q: tuple[float, float, float, float],
@@ -217,6 +222,16 @@ def velocity_payload(*, cmd_vx: float, cmd_wz: float,
                      odom_vx: float, odom_wz: float) -> dict:
     return {"cmd": {"vx": cmd_vx, "wz": cmd_wz},
             "odom": {"vx": odom_vx, "wz": odom_wz}}
+
+
+def objects_payload(objects: list[dict]) -> dict:
+    """Persistent semantic object memory (full list — it stays small).
+
+    Each object: { "id": str, "label": str, "confidence": float,
+                   "p": [x, y, z] (map frame), "count": uint,
+                   "last_seen": float (epoch s), "thumb": bin (JPEG) | absent }
+    """
+    return {"objects": objects}
 
 
 def imu_payload(*, angular_vel: tuple[float, float, float],

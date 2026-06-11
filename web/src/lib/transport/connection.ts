@@ -15,6 +15,8 @@ import { gridFeed } from '../../stores/gridFeed'
 import { pathFeed } from '../../stores/pathFeed'
 import { velocityFeed } from '../../stores/velocityFeed'
 import { imuFeed } from '../../stores/imuFeed'
+import { mapFeed } from '../../stores/mapFeed'
+import { useObjectsStore } from '../../stores/objectsStore'
 import type {
   CmdAckPayload,
   DecodedFrame,
@@ -31,6 +33,7 @@ import type {
 } from '../../types/channels'
 
 type Listener = (frame: DecodedFrame) => void
+type ObjectsSetter = ReturnType<typeof useObjectsStore.getState>['setObjects']
 
 // navStore registers here at import time (it imports this module, so this
 // module cannot import it back without a cycle)
@@ -110,6 +113,14 @@ class Connection {
       case CH.SCAN:
         if (frame.points) scanFeed.push(frame.points, frame.seq, frame.ts)
         break
+      case CH.MAP:
+        if (frame.points) mapFeed.push(frame.points)
+        break
+      case CH.OBJECTS: {
+        const data = frame.data as { objects: Parameters<ObjectsSetter>[0] }
+        useObjectsStore.getState().setObjects(data.objects)
+        break
+      }
       case CH.POSE:
         poseFeed.push(frame.data as PosePayload)
         break

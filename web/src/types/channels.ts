@@ -5,6 +5,8 @@ export interface HelloPayload {
   server: 'mock' | 'ros2' | string
   channels: string[]
   app_version: string
+  /** MJPEG stream names served at :8080/stream/<name> (1-4 cameras) */
+  cameras?: string[]
 }
 
 export interface PosePayload {

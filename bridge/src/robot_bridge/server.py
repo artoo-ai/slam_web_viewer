@@ -123,10 +123,12 @@ class BridgeServer:
     """Owns the client set, per-channel seq counters, and command dispatch."""
 
     def __init__(self, *, server_name: str, channels: list[str], app_version: str,
-                 command_handler: CommandHandler | None = None):
+                 command_handler: CommandHandler | None = None,
+                 cameras: list[str] | None = None):
         self.server_name = server_name
         self.channels = channels
         self.app_version = app_version
+        self.cameras = cameras or []
         self.command_handler = command_handler
         self.clients: set[Client] = set()
         self._seq: dict[str, int] = {}
@@ -174,7 +176,8 @@ class BridgeServer:
         try:
             await client.send_reliable(protocol.make_frame(
                 protocol.CH_HELLO,
-                protocol.hello_payload(self.server_name, self.channels, self.app_version),
+                protocol.hello_payload(self.server_name, self.channels,
+                                       self.app_version, self.cameras),
                 self.next_seq(protocol.CH_HELLO)))
             async for raw in ws:
                 if not isinstance(raw, bytes):

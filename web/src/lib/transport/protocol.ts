@@ -18,6 +18,8 @@ export const CH = {
   NAV_PATH: 'nav_path',
   VELOCITY: 'velocity',
   IMU: 'imu',
+  MAP: 'map',
+  OBJECTS: 'objects',
 } as const
 
 export const SCAN_STRIDE_FLOATS = 4 // x, y, z, intensity
@@ -52,7 +54,31 @@ export interface CancelGoalCommand {
   goal_id?: string
 }
 
-export type Command = PingCommand | SetParamCommand | SendGoalCommand | CancelGoalCommand
+export interface RecStartCommand {
+  cmd: 'rec_start'
+  id: number
+  path?: string
+}
+
+export interface RecStopCommand {
+  cmd: 'rec_stop'
+  id: number
+}
+
+export interface MapSaveCommand {
+  cmd: 'map_save'
+  id: number
+  path?: string
+}
+
+export type Command =
+  | PingCommand
+  | SetParamCommand
+  | SendGoalCommand
+  | CancelGoalCommand
+  | RecStartCommand
+  | RecStopCommand
+  | MapSaveCommand
 
 /** Omit that distributes over unions (plain Omit collapses Command to common keys). */
 export type DistributiveOmit<T, K extends keyof never> = T extends unknown

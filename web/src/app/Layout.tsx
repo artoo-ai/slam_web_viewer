@@ -1,35 +1,24 @@
 import { ViewportCanvas } from '../components/viewport/ViewportCanvas'
-import { StatusBar } from '../components/panels/StatusBar'
-import { StatsPanel } from '../components/panels/StatsPanel'
-import { NavPanel } from '../components/panels/NavPanel'
-import { LayersPanel } from '../components/panels/LayersPanel'
-import { CameraPanel } from '../components/panels/CameraPanel'
-import { VelocityPanel } from '../components/panels/VelocityPanel'
-import { ParameterPanel } from '../components/panels/ParameterPanel'
-import { ImuPanel } from '../components/panels/ImuPanel'
-import { LogPanel } from '../components/panels/LogPanel'
+import { HeaderBar } from '../components/chrome/HeaderBar'
+import { Sidebar } from '../components/chrome/Sidebar'
+import { MetricsCard } from '../components/chrome/MetricsCard'
+import { BboxReadout, CameraInset, IntensityLegend } from '../components/chrome/Overlays'
 import './layout.css'
 
+/** SJY HandHeldSLAM-style chrome: header bar, left sidebar, viewport filling
+ *  the rest with floating overlays (metrics card, legend, bbox, camera inset). */
 export function Layout() {
   return (
     <div className="layout">
+      <HeaderBar />
+      <Sidebar />
       <main className="layout-viewport">
         <ViewportCanvas />
+        <MetricsCard />
+        <IntensityLegend />
+        <CameraInset />
+        <BboxReadout />
       </main>
-      <aside className="layout-sidebar">
-        <CameraPanel />
-        <LayersPanel />
-        <VelocityPanel />
-        <NavPanel />
-        <ParameterPanel />
-        <ImuPanel />
-        <StatsPanel />
-        <LogPanel />
-        {/* future panels: IMU, parameters, detections, camera */}
-      </aside>
-      <footer className="layout-statusbar">
-        <StatusBar />
-      </footer>
     </div>
   )
 }

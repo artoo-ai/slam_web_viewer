@@ -26,7 +26,16 @@ from .world import build_world
 log = logging.getLogger("robot_bridge.mock")
 
 CHANNELS = ["scan", "map", "pose", "stats", "log", "status", "occupancy_grid",
-            "nav_status", "nav_path", "velocity", "imu"]
+            "nav_status", "nav_path", "velocity", "imu", "objects"]
+
+# fake semantic objects scattered in the world: revealed when the robot passes
+# within range, like the Roborock object-on-map feature
+FAKE_OBJECTS = [
+    {"label": "chair", "p": [-3.0, 2.0, 0.0], "confidence": 0.91},
+    {"label": "plant", "p": [-1.5, -1.2, 0.0], "confidence": 0.84},
+    {"label": "cabinet", "p": [2.6, -2.6, 0.0], "confidence": 0.88},
+    {"label": "person", "p": [4.0, 0.5, 0.0], "confidence": 0.76},
+]
 
 
 class MockBridge:
@@ -34,7 +43,8 @@ class MockBridge:
         self.args = args
         self.server = BridgeServer(
             server_name="mock", channels=CHANNELS, app_version="0.1.0",
-            command_handler=self.on_command)
+            command_handler=self.on_command,
+            cameras=["rgb", "depth"] if args.mjpeg_port else [])
         planes, boxes, cylinders = build_world()
         self.synth = ScanSynthesizer(planes, boxes, cylinders,
                                      np.random.default_rng(args.seed))
@@ -47,6 +57,7 @@ class MockBridge:
         self.active_goal: dict | None = None  # {"goal_id": str, "cancelled": bool}
         self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
         self.mapacc = MapAccumulator(voxel_size=0.10)
+        self.found_objects: list[dict] = []
 
     # -- distance traveled at "now", at constant --speed
     def distance(self) -> float:
@@ -73,6 +84,19 @@ class MockBridge:
                     cmd.get("id", 0), goal_id, True))
                 asyncio.ensure_future(self._simulate_nav(
                     self.active_goal, cmd.get("x", 0.0), cmd.get("y", 0.0)))
+            case "map_save":
+                try:
+                    info = self.mapacc.save_qpc(
+                        cmd.get("path") or f"maps/map_{int(time.time())}.qpc")
+                    await self.server.reply_ack(client, {
+                        "cmd": "map_save_ack", "id": cmd.get("id", 0), "ok": True, **info})
+                    self.server.broadcast(protocol.CH_LOG, protocol.log_payload(
+                        "info", f"map saved: {info['path']} "
+                                f"({info['points']:,} pts, {info['bytes']/1024:.0f} KiB)"))
+                except (ValueError, OSError) as e:
+                    await self.server.reply_ack(client, {
+                        "cmd": "map_save_ack", "id": cmd.get("id", 0), "ok": False,
+                        "message": str(e)})
             case "cancel_goal":
                 goal = self.active_goal
                 ok = goal is not None and not goal["cancelled"] and \
@@ -220,6 +244,49 @@ class MockBridge:
                 odom_vx=round(odom_vx, 3), odom_wz=round(odom_wz, 3)))
             await asyncio.sleep(0.1)
 
+    async def objects_loop(self):
+        """Reveal fake objects when the robot passes near them, with a synthetic
+        camera-crop thumbnail — exercises the Roborock-style object map."""
+        import io
+
+        from PIL import Image, ImageDraw
+
+        def make_thumb(label: str) -> bytes:
+            img = Image.new("RGB", (160, 120), (30, 36, 46))
+            d = ImageDraw.Draw(img)
+            d.rectangle([30, 30, 130, 100], outline=(56, 189, 248), width=3)
+            d.text((36, 50), label, fill=(213, 221, 232))
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=70)
+            return buf.getvalue()
+
+        pending = list(FAKE_OBJECTS)
+        while True:
+            await asyncio.sleep(1.0)
+            pos, _, _ = pose_at(self.distance())
+            changed = False
+            for obj in list(pending):
+                if np.hypot(obj["p"][0] - pos[0], obj["p"][1] - pos[1]) < 2.5:
+                    pending.remove(obj)
+                    self.found_objects.append({
+                        "id": f"obj-{len(self.found_objects) + 1}",
+                        "label": obj["label"],
+                        "confidence": obj["confidence"],
+                        "p": obj["p"],
+                        "count": 1,
+                        "last_seen": time.time(),
+                        "thumb": make_thumb(obj["label"]),
+                    })
+                    changed = True
+                    self.server.broadcast(protocol.CH_STATUS, protocol.status_payload(
+                        "object_detected", label=obj["label"], count=1))
+                    self.server.broadcast(protocol.CH_LOG, protocol.log_payload(
+                        "info", f"object detected: {obj['label']} at "
+                                f"({obj['p'][0]:.1f}, {obj['p'][1]:.1f})"))
+            if changed:
+                self.server.broadcast(protocol.CH_OBJECTS,
+                                      protocol.objects_payload(self.found_objects))
+
     async def imu_loop(self):
         """IMU at 10 Hz from trajectory derivatives: gyro = quaternion rate,
         accel = gravity + centripetal-ish wobble + noise."""
@@ -241,10 +308,21 @@ class MockBridge:
             await asyncio.sleep(0.1)
 
     async def camera_loop(self):
-        # frames render regardless of WS clients — MJPEG has its own consumers
+        # frames render regardless of WS clients — MJPEG has its own consumers.
+        # Two streams exercise the viewer's multi-camera strip.
+        import io
+
+        from PIL import Image, ImageOps
+
         frame_no = 0
         while True:
-            self.mjpeg.set_frame(now_frame(self.t0, frame_no))
+            jpeg = now_frame(self.t0, frame_no)
+            self.mjpeg.set_frame(jpeg, "rgb")
+            if frame_no % 2 == 0:  # fake "depth" at half rate: inverted grayscale
+                img = ImageOps.invert(Image.open(io.BytesIO(jpeg)).convert("L"))
+                buf = io.BytesIO()
+                img.convert("RGB").save(buf, format="JPEG", quality=70)
+                self.mjpeg.set_frame(buf.getvalue(), "depth")
             frame_no += 1
             await asyncio.sleep(0.1)
 
@@ -273,6 +351,7 @@ class MockBridge:
             self.path_loop(),
             self.velocity_loop(),
             self.imu_loop(),
+            self.objects_loop(),
             self.chatter_loop(),
         ]
         if self.mjpeg is not None:
