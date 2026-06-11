@@ -25,8 +25,12 @@ log = logging.getLogger("robot_bridge.ros2")
 
 CHANNELS = ["scan", "pose", "stats", "log", "status"]
 
-SCAN_TOPIC = "/cloud_registered_body"  # FAST-LIO2, body frame (RTABMap input)
-ODOM_TOPIC = "/Odometry"               # FAST-LIO2 pose @ ~10 Hz
+# FAST-LIO2 topics (match slam_bringup's fast_lio.launch.py).
+# /cloud_registered is the WORLD-frame cloud — the wire protocol requires scan
+# points in map frame. /cloud_registered_body (body frame) is RTABMap's input,
+# not ours.
+SCAN_TOPIC = "/cloud_registered"
+ODOM_TOPIC = "/Odometry"  # FAST-LIO2 pose @ ~10 Hz
 
 
 class Ros2Bridge:
