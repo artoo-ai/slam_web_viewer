@@ -64,8 +64,13 @@ class BridgeServer:
         self._seq[topic] = (seq + 1) % protocol.SEQ_WRAP
         return seq
 
-    def broadcast(self, topic: str, data, *, ts: float | None = None) -> None:
-        """Encode once, fan out to every client. Safe to call with no clients."""
+    def broadcast(self, topic: str, data, ts: float | None = None) -> None:
+        """Encode once, fan out to every client. Safe to call with no clients.
+
+        `ts` must stay positional: the rclpy bridge dispatches via
+        loop.call_soon_threadsafe(server.broadcast, topic, data, ts), which
+        cannot pass keyword arguments.
+        """
         if not self.clients:
             self._seq[topic] = (self._seq.get(topic, 0) + 1) % protocol.SEQ_WRAP
             return
