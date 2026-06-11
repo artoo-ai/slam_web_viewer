@@ -14,7 +14,9 @@ import time
 import numpy as np
 
 from .. import protocol
+from ..mjpeg import MjpegServer
 from ..server import BridgeServer, Client
+from .camera import now_frame
 from .grid import RESOLUTION, ExplorationGrid
 from .scan import ScanSynthesizer
 from .trajectory import LOOP_LENGTH, pose_at
@@ -42,6 +44,7 @@ class MockBridge:
         self.scan_count = 0
         self.goal_seq = 0
         self.active_goal: dict | None = None  # {"goal_id": str, "cancelled": bool}
+        self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
 
     # -- distance traveled at "now", at constant --speed
     def distance(self) -> float:
@@ -212,6 +215,14 @@ class MockBridge:
                 odom_vx=round(odom_vx, 3), odom_wz=round(odom_wz, 3)))
             await asyncio.sleep(0.1)
 
+    async def camera_loop(self):
+        # frames render regardless of WS clients — MJPEG has its own consumers
+        frame_no = 0
+        while True:
+            self.mjpeg.set_frame(now_frame(self.t0, frame_no))
+            frame_no += 1
+            await asyncio.sleep(0.1)
+
     async def chatter_loop(self):
         """Occasional informational log lines so the log panel has life."""
         messages = [
@@ -228,7 +239,7 @@ class MockBridge:
             i += 1
 
     async def run(self):
-        await asyncio.gather(
+        loops = [
             self.server.serve_forever(self.args.host, self.args.port),
             self.scan_loop(),
             self.pose_loop(),
@@ -237,7 +248,11 @@ class MockBridge:
             self.path_loop(),
             self.velocity_loop(),
             self.chatter_loop(),
-        )
+        ]
+        if self.mjpeg is not None:
+            loops += [self.mjpeg.serve_forever(self.args.host, self.args.mjpeg_port),
+                      self.camera_loop()]
+        await asyncio.gather(*loops)
 
 
 def main():
@@ -249,6 +264,8 @@ def main():
     parser.add_argument("--points", type=int, default=30000)
     parser.add_argument("--speed", type=float, default=0.4, help="m/s along the loop")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--mjpeg-port", type=int, default=8080,
+                        help="MJPEG camera port (0 disables)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO,

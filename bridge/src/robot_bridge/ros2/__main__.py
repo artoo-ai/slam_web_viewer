@@ -33,6 +33,7 @@ import threading
 import time
 
 from .. import protocol
+from ..mjpeg import MjpegServer
 from ..server import BridgeServer, Client
 from .converters import (
     occupancygrid_to_grid,
@@ -88,6 +89,10 @@ class Ros2Bridge:
         self.odom_vel = (0.0, 0.0)
         self._tf_buffer = None
         self._tf_warned = False
+
+        # camera
+        self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
+        self._last_jpeg_t = 0.0
 
         # nav state
         self._ros_jobs: queue.Queue = queue.Queue()
@@ -145,6 +150,12 @@ class Ros2Bridge:
             node.create_subscription(Twist, self.args.cmd_vel_topic,
                                      self.on_cmd_vel, 10)
             subscribed.append(self.args.cmd_vel_topic)
+        if self.mjpeg is not None and self.args.camera_topic:
+            from sensor_msgs.msg import Image
+            from rclpy.qos import qos_profile_sensor_data
+            node.create_subscription(Image, self.args.camera_topic,
+                                     self.on_image, qos_profile_sensor_data)
+            subscribed.append(self.args.camera_topic)
 
         # TF listener: local costmap origins arrive in the odom frame and must
         # be re-expressed in map (the wire protocol's only frame)
@@ -230,6 +241,27 @@ class Ros2Bridge:
     def on_cmd_vel(self, msg) -> None:
         self.cmd_vel = (float(msg.linear.x), float(msg.angular.z))
         self.cmd_vel_t = time.monotonic()
+
+    def on_image(self, msg) -> None:
+        """D435 color Image -> JPEG, decimated to the MJPEG fps."""
+        now = time.monotonic()
+        if now - self._last_jpeg_t < 1.0 / self.mjpeg.fps:
+            return
+        self._last_jpeg_t = now
+        import io
+
+        import numpy as np
+        from PIL import Image as PilImage
+        arr = np.frombuffer(bytes(msg.data), dtype=np.uint8)
+        arr = arr.reshape(msg.height, msg.step // 3 if msg.encoding in ("rgb8", "bgr8")
+                          else msg.width, 3)[:, :msg.width, :]
+        if msg.encoding == "bgr8":
+            arr = arr[:, :, ::-1]
+        elif msg.encoding != "rgb8":
+            return  # unsupported encoding — D435 color is rgb8 by default
+        buf = io.BytesIO()
+        PilImage.fromarray(arr, "RGB").save(buf, format="JPEG", quality=80)
+        self.mjpeg.set_frame(buf.getvalue())
 
     def on_costmap(self, msg, layer: str) -> None:
         grid = occupancygrid_to_grid(msg)
@@ -419,11 +451,14 @@ class Ros2Bridge:
     async def run(self) -> None:
         self.loop = asyncio.get_running_loop()
         threading.Thread(target=self.ros_thread, daemon=True, name="rclpy").start()
-        await asyncio.gather(
+        loops = [
             self.server.serve_forever(self.args.host, self.args.port),
             self.stats_loop(),
             self.velocity_loop(),
-        )
+        ]
+        if self.mjpeg is not None:
+            loops.append(self.mjpeg.serve_forever(self.args.host, self.args.mjpeg_port))
+        await asyncio.gather(*loops)
 
 
 def main() -> None:
@@ -446,6 +481,10 @@ def main() -> None:
                         help="Nav2 global plan nav_msgs/Path ('' disables)")
     parser.add_argument("--cmd-vel-topic", default="/cmd_vel",
                         help="commanded Twist for the velocity channel ('' disables)")
+    parser.add_argument("--camera-topic", default="/camera/camera/color/image_raw",
+                        help="D435 color sensor_msgs/Image for MJPEG ('' disables)")
+    parser.add_argument("--mjpeg-port", type=int, default=8080,
+                        help="MJPEG camera port (0 disables)")
     parser.add_argument("--decimate", type=int, default=1,
                         help="keep every k-th scan point")
     parser.add_argument("--intensity-scale", type=float, default=1.0 / 255.0,

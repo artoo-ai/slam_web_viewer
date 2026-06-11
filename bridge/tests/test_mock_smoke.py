@@ -17,7 +17,8 @@ from robot_bridge.mock.world import CEILING, ROOM_X, ROOM_Y
 
 def make_args(port: int) -> argparse.Namespace:
     return argparse.Namespace(host="127.0.0.1", port=port, scan_hz=10.0,
-                              pose_hz=20.0, points=5000, speed=0.4, seed=42)
+                              pose_hz=20.0, points=5000, speed=0.4, seed=42,
+                              mjpeg_port=0)
 
 
 @pytest.fixture

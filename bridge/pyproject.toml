@@ -8,6 +8,7 @@ dependencies = [
     "websockets>=15.0",
     "msgpack>=1.0.5",
     "numpy>=1.21",
+    "pillow>=9.0",
 ]
 
 [project.optional-dependencies]

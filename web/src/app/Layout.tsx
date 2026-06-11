@@ -3,6 +3,7 @@ import { StatusBar } from '../components/panels/StatusBar'
 import { StatsPanel } from '../components/panels/StatsPanel'
 import { NavPanel } from '../components/panels/NavPanel'
 import { LayersPanel } from '../components/panels/LayersPanel'
+import { CameraPanel } from '../components/panels/CameraPanel'
 import { VelocityPanel } from '../components/panels/VelocityPanel'
 import { LogPanel } from '../components/panels/LogPanel'
 import './layout.css'
@@ -14,6 +15,7 @@ export function Layout() {
         <ViewportCanvas />
       </main>
       <aside className="layout-sidebar">
+        <CameraPanel />
         <LayersPanel />
         <VelocityPanel />
         <NavPanel />

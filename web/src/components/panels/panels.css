@@ -114,6 +114,20 @@
   font-size: 11px;
 }
 
+/* camera panel */
+.camera-img {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+}
+
+.camera-offline {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
 /* log panel */
 .log-list {
   margin: 0;
