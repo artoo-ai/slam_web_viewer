@@ -14,10 +14,12 @@ import { poseFeed } from '../../stores/poseFeed'
 import { gridFeed } from '../../stores/gridFeed'
 import { pathFeed } from '../../stores/pathFeed'
 import { velocityFeed } from '../../stores/velocityFeed'
+import { imuFeed } from '../../stores/imuFeed'
 import type {
   CmdAckPayload,
   DecodedFrame,
   HelloPayload,
+  ImuPayload,
   LogPayload,
   NavPathPayload,
   NavStatusPayload,
@@ -122,6 +124,9 @@ class Connection {
         break
       case CH.VELOCITY:
         velocityFeed.push(frame.data as VelocityPayload, frame.ts)
+        break
+      case CH.IMU:
+        imuFeed.push(frame.data as ImuPayload, frame.ts)
         break
       case CH.HELLO:
         useConnectionStore.getState().setHello(frame.data as HelloPayload)

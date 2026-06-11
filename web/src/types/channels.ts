@@ -106,6 +106,12 @@ export interface VelocityPayload {
   odom: { vx: number; wz: number }
 }
 
+export interface ImuPayload {
+  angular_vel: [number, number, number]
+  linear_accel: [number, number, number]
+  orientation?: [number, number, number, number]
+}
+
 /** A decoded frame as posted from the decoder worker to the main thread. */
 export interface DecodedFrame {
   topic: string

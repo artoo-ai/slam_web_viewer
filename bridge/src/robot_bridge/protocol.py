@@ -30,6 +30,7 @@ CH_OCCUPANCY_GRID = "occupancy_grid"
 CH_NAV_STATUS = "nav_status"
 CH_NAV_PATH = "nav_path"
 CH_VELOCITY = "velocity"
+CH_IMU = "imu"
 
 GRID_LAYERS = ("map", "costmap_global", "costmap_local")
 
@@ -37,7 +38,6 @@ GRID_LAYERS = ("map", "costmap_global", "costmap_local")
 RESERVED_CHANNELS = (
     "map",
     "depth",
-    "imu",
     "detections",
     "processing",
     "loop_closure",
@@ -217,6 +217,16 @@ def velocity_payload(*, cmd_vx: float, cmd_wz: float,
                      odom_vx: float, odom_wz: float) -> dict:
     return {"cmd": {"vx": cmd_vx, "wz": cmd_wz},
             "odom": {"vx": odom_vx, "wz": odom_wz}}
+
+
+def imu_payload(*, angular_vel: tuple[float, float, float],
+                linear_accel: tuple[float, float, float],
+                orientation: tuple[float, float, float, float] | None = None) -> dict:
+    payload: dict = {"angular_vel": list(angular_vel),
+                     "linear_accel": list(linear_accel)}
+    if orientation is not None:
+        payload["orientation"] = list(orientation)
+    return payload
 
 
 def param_ack_payload(cmd_id: int, node: str, accepted: dict, rejected: dict) -> dict:

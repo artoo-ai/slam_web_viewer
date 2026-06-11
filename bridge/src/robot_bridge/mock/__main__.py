@@ -25,7 +25,7 @@ from .world import build_world
 log = logging.getLogger("robot_bridge.mock")
 
 CHANNELS = ["scan", "pose", "stats", "log", "status", "occupancy_grid",
-            "nav_status", "nav_path", "velocity"]
+            "nav_status", "nav_path", "velocity", "imu"]
 
 
 class MockBridge:
@@ -215,6 +215,26 @@ class MockBridge:
                 odom_vx=round(odom_vx, 3), odom_wz=round(odom_wz, 3)))
             await asyncio.sleep(0.1)
 
+    async def imu_loop(self):
+        """IMU at 10 Hz from trajectory derivatives: gyro = quaternion rate,
+        accel = gravity + centripetal-ish wobble + noise."""
+        rng = np.random.default_rng(self.args.seed + 3)
+        dt = 0.05 / self.args.speed
+        while True:
+            d = self.distance()
+            _, q0, _ = pose_at(d)
+            _, q1, _ = pose_at(d + 0.05)
+            yaw0, yaw1 = (2.0 * np.arctan2(q[2], q[3]) for q in (q0, q1))
+            wz = float(np.unwrap([yaw0, yaw1])[1] - yaw0) / dt
+            gyro = (float(rng.normal(0, 0.01)), float(rng.normal(0, 0.01)),
+                    wz + float(rng.normal(0, 0.02)))
+            accel = (float(rng.normal(0, 0.05)),
+                     float(wz * self.args.speed + rng.normal(0, 0.05)),
+                     9.81 + float(rng.normal(0, 0.08)))
+            self.server.broadcast(protocol.CH_IMU, protocol.imu_payload(
+                angular_vel=gyro, linear_accel=accel))
+            await asyncio.sleep(0.1)
+
     async def camera_loop(self):
         # frames render regardless of WS clients — MJPEG has its own consumers
         frame_no = 0
@@ -247,6 +267,7 @@ class MockBridge:
             self.grid_loop(),
             self.path_loop(),
             self.velocity_loop(),
+            self.imu_loop(),
             self.chatter_loop(),
         ]
         if self.mjpeg is not None:

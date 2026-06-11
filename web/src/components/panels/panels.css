@@ -192,6 +192,14 @@
 .param-ack-rejected { color: var(--err); }
 .param-ack-timeout { color: var(--warn); }
 
+/* imu panel */
+.imu-legend {
+  display: flex;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
 /* log panel */
 .log-list {
   margin: 0;

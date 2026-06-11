@@ -17,6 +17,7 @@ export const CH = {
   NAV_STATUS: 'nav_status',
   NAV_PATH: 'nav_path',
   VELOCITY: 'velocity',
+  IMU: 'imu',
 } as const
 
 export const SCAN_STRIDE_FLOATS = 4 // x, y, z, intensity

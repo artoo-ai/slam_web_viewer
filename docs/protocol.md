@@ -51,6 +51,7 @@ Every message is a MessagePack map:
 | `nav_status` | event + ~2 Hz while navigating | map `{ "state": "accepted"\|"navigating"\|"succeeded"\|"aborted"\|"canceled"\|"rejected", "goal_id"?: str, "distance_m"?: float, "eta_s"?: float, "message"?: str }` |
 | `nav_path` | on plan change | map `{ "frame": "map", "poses": bin float32 LE [x, y, theta] × N }` — Nav2 global plan; empty `poses` clears the displayed path |
 | `velocity` | 10 Hz | map `{ "cmd": { "vx": float, "wz": float }, "odom": { "vx": float, "wz": float } }` — commanded vs odometry-measured body velocities (m/s, rad/s). Divergence (cmd spinning, odom not following) is the map-smear precursor. |
+| `imu` | 10 Hz (bridge-decimated) | map `{ "angular_vel": [x,y,z] rad/s, "linear_accel": [x,y,z] m/s², "orientation"?: [x,y,z,w] }` — orientation omitted when the IMU doesn't fuse one (Mid-360 built-in doesn't) |
 
 `occupancy_grid` payload:
 
@@ -92,7 +93,6 @@ run_length 1..65535. The decoded cell count MUST equal `width * height`.
 |---|---|
 | `map` | bin — accumulated-map keyframe delta, float32 `[x,y,z,intensity] × N` |
 | `depth` | bin — float32 `[x,y,z,r,g,b] × N` |
-| `imu` | map `{ "orientation": [x,y,z,w], "angular_vel": [x,y,z], "linear_accel": [x,y,z] }` (decimated to 10 Hz by bridge) |
 | `detections` | map `{ "boxes": [{ "center": [x,y,z], "size": [x,y,z], "yaw": float, "class_id": uint, "label": str, "confidence": float }] }` — source-agnostic: robot-side YOLO or browser-side inference both produce this shape |
 | `processing` | map `{ "frame_ms": float, "icp_mean": float, "icp_std": float }` |
 | `loop_closure` | map `{ "src_kf": uint, "dst_kf": uint, "error": float, "detector": str, "accepted": bool }` |

@@ -63,7 +63,7 @@ class Ros2Bridge:
     def __init__(self, args: argparse.Namespace):
         self.args = args
         channels = ["pose", "occupancy_grid", "stats", "log", "nav_status",
-                    "nav_path", "velocity"]
+                    "nav_path", "velocity", "imu"]
         if args.scan_topic:
             channels.append("scan")
         self.server = BridgeServer(
@@ -93,6 +93,7 @@ class Ros2Bridge:
         # camera
         self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
         self._last_jpeg_t = 0.0
+        self._last_imu_t = 0.0
 
         # nav state
         self._ros_jobs: queue.Queue = queue.Queue()
@@ -150,6 +151,12 @@ class Ros2Bridge:
             node.create_subscription(Twist, self.args.cmd_vel_topic,
                                      self.on_cmd_vel, 10)
             subscribed.append(self.args.cmd_vel_topic)
+        if self.args.imu_topic:
+            from sensor_msgs.msg import Imu
+            from rclpy.qos import qos_profile_sensor_data
+            node.create_subscription(Imu, self.args.imu_topic, self.on_imu,
+                                     qos_profile_sensor_data)
+            subscribed.append(self.args.imu_topic)
         if self.mjpeg is not None and self.args.camera_topic:
             from sensor_msgs.msg import Image
             from rclpy.qos import qos_profile_sensor_data
@@ -241,6 +248,22 @@ class Ros2Bridge:
     def on_cmd_vel(self, msg) -> None:
         self.cmd_vel = (float(msg.linear.x), float(msg.angular.z))
         self.cmd_vel_t = time.monotonic()
+
+    def on_imu(self, msg) -> None:
+        """Mid-360 IMU at 200 Hz -> decimate to 10 Hz. Orientation included only
+        if the driver fuses one (all-zero quaternion means none)."""
+        now = time.monotonic()
+        if now - self._last_imu_t < 0.1:
+            return
+        self._last_imu_t = now
+        o = msg.orientation
+        orientation = None
+        if abs(o.x) + abs(o.y) + abs(o.z) + abs(o.w) > 1e-6:
+            orientation = (o.x, o.y, o.z, o.w)
+        g, a = msg.angular_velocity, msg.linear_acceleration
+        self._post(protocol.CH_IMU, protocol.imu_payload(
+            angular_vel=(g.x, g.y, g.z), linear_accel=(a.x, a.y, a.z),
+            orientation=orientation), stamp_to_seconds(msg.header.stamp))
 
     def on_image(self, msg) -> None:
         """D435 color Image -> JPEG, decimated to the MJPEG fps."""
@@ -530,6 +553,8 @@ def main() -> None:
                         help="Nav2 global plan nav_msgs/Path ('' disables)")
     parser.add_argument("--cmd-vel-topic", default="/cmd_vel",
                         help="commanded Twist for the velocity channel ('' disables)")
+    parser.add_argument("--imu-topic", default="/livox/imu",
+                        help="sensor_msgs/Imu topic, decimated to 10 Hz ('' disables)")
     parser.add_argument("--camera-topic", default="/camera/camera/color/image_raw",
                         help="D435 color sensor_msgs/Image for MJPEG ('' disables)")
     parser.add_argument("--mjpeg-port", type=int, default=8080,

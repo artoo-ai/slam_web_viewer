@@ -6,6 +6,7 @@ import { LayersPanel } from '../components/panels/LayersPanel'
 import { CameraPanel } from '../components/panels/CameraPanel'
 import { VelocityPanel } from '../components/panels/VelocityPanel'
 import { ParameterPanel } from '../components/panels/ParameterPanel'
+import { ImuPanel } from '../components/panels/ImuPanel'
 import { LogPanel } from '../components/panels/LogPanel'
 import './layout.css'
 
@@ -21,6 +22,7 @@ export function Layout() {
         <VelocityPanel />
         <NavPanel />
         <ParameterPanel />
+        <ImuPanel />
         <StatsPanel />
         <LogPanel />
         {/* future panels: IMU, parameters, detections, camera */}
