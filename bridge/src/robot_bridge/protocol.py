@@ -28,6 +28,10 @@ CH_STATUS = "status"
 CH_CMD_ACK = "cmd_ack"
 CH_OCCUPANCY_GRID = "occupancy_grid"
 CH_NAV_STATUS = "nav_status"
+CH_NAV_PATH = "nav_path"
+CH_VELOCITY = "velocity"
+
+GRID_LAYERS = ("map", "costmap_global", "costmap_local")
 
 # Reserved channels (documented in docs/protocol.md, implemented in later slices)
 RESERVED_CHANNELS = (
@@ -36,9 +40,7 @@ RESERVED_CHANNELS = (
     "imu",
     "detections",
     "processing",
-    "velocity",
     "loop_closure",
-    "nav_path",
 )
 
 NAV_STATES = ("accepted", "navigating", "succeeded", "aborted", "canceled", "rejected")
@@ -185,9 +187,12 @@ def unpack_grid_rle(data: bytes, n_cells: int) -> np.ndarray:
 
 def occupancy_grid_payload(*, width: int, height: int, resolution: float,
                            origin: tuple[float, float, float],
-                           cells: np.ndarray) -> dict:
+                           cells: np.ndarray, layer: str = "map") -> dict:
     """Build the occupancy_grid map payload from flat row-major int8/uint8 cells."""
+    if layer not in GRID_LAYERS:
+        raise ValueError(f"unknown grid layer {layer!r}")
     return {
+        "layer": layer,
         "width": width,
         "height": height,
         "resolution": resolution,
@@ -195,6 +200,23 @@ def occupancy_grid_payload(*, width: int, height: int, resolution: float,
         "encoding": "rle",
         "data": pack_grid_rle(cells),
     }
+
+
+def nav_path_payload(poses_xyt: np.ndarray, frame: str = "map") -> dict:
+    """Build the nav_path payload from an (N, 3) float32 array of [x, y, theta].
+
+    An empty array clears the displayed path.
+    """
+    if poses_xyt.size and (poses_xyt.ndim != 2 or poses_xyt.shape[1] != 3):
+        raise ValueError(f"path must have shape (N, 3), got {poses_xyt.shape}")
+    data = np.ascontiguousarray(poses_xyt, dtype=np.float32).tobytes()
+    return {"frame": frame, "poses": data}
+
+
+def velocity_payload(*, cmd_vx: float, cmd_wz: float,
+                     odom_vx: float, odom_wz: float) -> dict:
+    return {"cmd": {"vx": cmd_vx, "wz": cmd_wz},
+            "odom": {"vx": odom_vx, "wz": odom_wz}}
 
 
 def param_ack_payload(cmd_id: int, node: str, accepted: dict, rejected: dict) -> dict:

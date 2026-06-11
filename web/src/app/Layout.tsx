@@ -2,6 +2,8 @@ import { ViewportCanvas } from '../components/viewport/ViewportCanvas'
 import { StatusBar } from '../components/panels/StatusBar'
 import { StatsPanel } from '../components/panels/StatsPanel'
 import { NavPanel } from '../components/panels/NavPanel'
+import { LayersPanel } from '../components/panels/LayersPanel'
+import { VelocityPanel } from '../components/panels/VelocityPanel'
 import { LogPanel } from '../components/panels/LogPanel'
 import './layout.css'
 
@@ -12,8 +14,10 @@ export function Layout() {
         <ViewportCanvas />
       </main>
       <aside className="layout-sidebar">
-        <StatsPanel />
+        <LayersPanel />
+        <VelocityPanel />
         <NavPanel />
+        <StatsPanel />
         <LogPanel />
         {/* future panels: IMU, parameters, detections, camera */}
       </aside>

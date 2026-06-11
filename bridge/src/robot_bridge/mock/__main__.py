@@ -22,7 +22,8 @@ from .world import build_world
 
 log = logging.getLogger("robot_bridge.mock")
 
-CHANNELS = ["scan", "pose", "stats", "log", "status", "occupancy_grid", "nav_status"]
+CHANNELS = ["scan", "pose", "stats", "log", "status", "occupancy_grid",
+            "nav_status", "nav_path", "velocity"]
 
 
 class MockBridge:
@@ -155,18 +156,61 @@ class MockBridge:
                 clients=len(self.server.clients)))
 
     async def grid_loop(self):
-        """Reveal the map around the robot and broadcast at 0.5 Hz — simulates
-        slam_toolbox building a map during frontier exploration."""
+        """Reveal the map around the robot and broadcast map + costmap layers —
+        simulates slam_toolbox + Nav2 global costmap during exploration."""
         while True:
             pos, _, _ = pose_at(self.distance())
             self.grid.reveal(pos[0], pos[1])
+            common = dict(width=self.grid.width, height=self.grid.height,
+                          resolution=RESOLUTION, origin=self.grid.origin)
             self.server.broadcast(
                 protocol.CH_OCCUPANCY_GRID,
-                protocol.occupancy_grid_payload(
-                    width=self.grid.width, height=self.grid.height,
-                    resolution=RESOLUTION, origin=self.grid.origin,
-                    cells=self.grid.snapshot()))
+                protocol.occupancy_grid_payload(cells=self.grid.snapshot(), **common))
+            self.server.broadcast(
+                protocol.CH_OCCUPANCY_GRID,
+                protocol.occupancy_grid_payload(cells=self.grid.costmap(),
+                                                layer="costmap_global", **common))
             await asyncio.sleep(2.0)
+
+    async def path_loop(self):
+        """Fake Nav2 global plan: a curve from the robot to a point ahead on the
+        loop, refreshed at 1 Hz."""
+        while True:
+            d = self.distance()
+            ahead = np.linspace(d, d + 2.5, 12)
+            poses = np.empty((len(ahead), 3), dtype=np.float32)
+            for i, s in enumerate(ahead):
+                p, q, _ = pose_at(s)
+                poses[i] = (p[0], p[1], 2.0 * np.arctan2(q[2], q[3]))
+            self.server.broadcast(protocol.CH_NAV_PATH,
+                                  protocol.nav_path_payload(poses))
+            await asyncio.sleep(1.0)
+
+    async def velocity_loop(self):
+        """cmd vs odom velocities at 10 Hz. Every 20 s, a 3 s 'smear episode':
+        commanded spin at 1.0 rad/s while odom reports ~3% of it — the exact
+        rf2o-loses-rotation signature the viewer's alarm is built to catch."""
+        rng = np.random.default_rng(self.args.seed + 2)
+        while True:
+            t = time.time() - self.t0
+            d = self.distance()
+            _, q0, _ = pose_at(d)
+            _, q1, _ = pose_at(d + 0.05)
+            yaw0 = 2.0 * np.arctan2(q0[2], q0[3])
+            yaw1 = 2.0 * np.arctan2(q1[2], q1[3])
+            wz = float(np.unwrap([yaw0, yaw1])[1] - yaw0) / (0.05 / self.args.speed)
+            in_episode = (t % 20.0) < 3.0
+            if in_episode:
+                cmd_vx, cmd_wz = 0.0, 1.0
+                odom_vx, odom_wz = 0.0, 0.03 + float(rng.normal(0, 0.01))
+            else:
+                cmd_vx, cmd_wz = self.args.speed, wz
+                odom_vx = cmd_vx + float(rng.normal(0, 0.01))
+                odom_wz = wz + float(rng.normal(0, 0.02))
+            self.server.broadcast(protocol.CH_VELOCITY, protocol.velocity_payload(
+                cmd_vx=round(cmd_vx, 3), cmd_wz=round(cmd_wz, 3),
+                odom_vx=round(odom_vx, 3), odom_wz=round(odom_wz, 3)))
+            await asyncio.sleep(0.1)
 
     async def chatter_loop(self):
         """Occasional informational log lines so the log panel has life."""
@@ -190,6 +234,8 @@ class MockBridge:
             self.pose_loop(),
             self.stats_loop(),
             self.grid_loop(),
+            self.path_loop(),
+            self.velocity_loop(),
             self.chatter_loop(),
         )
 

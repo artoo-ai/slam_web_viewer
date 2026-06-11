@@ -4,6 +4,7 @@ import { PointCloudViewer } from './PointCloudViewer'
 import { TrajectoryOverlay } from './TrajectoryOverlay'
 import { RobotPoseGlyph } from './RobotPoseGlyph'
 import { OccupancyGridLayer } from './OccupancyGridLayer'
+import { PathOverlay } from './PathOverlay'
 import { GoalClickPlane, GoalMarker } from './GoalControls'
 
 /** The 3D scene. World is REP-103 z-up — camera.up must be set before
@@ -31,7 +32,10 @@ export function ViewportCanvas() {
       <PointCloudViewer />
       <TrajectoryOverlay />
       <RobotPoseGlyph />
-      <OccupancyGridLayer />
+      <OccupancyGridLayer layer="map" palette="map" z={0.01} />
+      <OccupancyGridLayer layer="costmap_global" palette="cost" z={0.02} />
+      <OccupancyGridLayer layer="costmap_local" palette="cost" z={0.03} />
+      <PathOverlay />
       <GoalClickPlane />
       <GoalMarker />
     </Canvas>

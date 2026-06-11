@@ -84,6 +84,8 @@ export interface NavStatusPayload {
 }
 
 export interface OccupancyGridPayload {
+  /** absent = "map" (the SLAM map); costmap_global / costmap_local are Nav2 layers */
+  layer?: 'map' | 'costmap_global' | 'costmap_local'
   width: number
   height: number
   resolution: number
@@ -91,6 +93,17 @@ export interface OccupancyGridPayload {
   origin: [number, number, number]
   encoding: 'rle'
   data: Uint8Array
+}
+
+export interface NavPathPayload {
+  frame: string
+  /** packed float32 LE [x, y, theta] * N */
+  poses: Uint8Array
+}
+
+export interface VelocityPayload {
+  cmd: { vx: number; wz: number }
+  odom: { vx: number; wz: number }
 }
 
 /** A decoded frame as posted from the decoder worker to the main thread. */

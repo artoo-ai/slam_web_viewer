@@ -12,16 +12,20 @@ import { useTelemetryStore } from '../../stores/telemetryStore'
 import { scanFeed } from '../../stores/scanFeed'
 import { poseFeed } from '../../stores/poseFeed'
 import { gridFeed } from '../../stores/gridFeed'
+import { pathFeed } from '../../stores/pathFeed'
+import { velocityFeed } from '../../stores/velocityFeed'
 import type {
   CmdAckPayload,
   DecodedFrame,
   HelloPayload,
   LogPayload,
+  NavPathPayload,
   NavStatusPayload,
   OccupancyGridPayload,
   PosePayload,
   StatsPayload,
   StatusPayload,
+  VelocityPayload,
 } from '../../types/channels'
 
 type Listener = (frame: DecodedFrame) => void
@@ -112,6 +116,12 @@ class Connection {
         break
       case CH.NAV_STATUS:
         navStatusSink(frame.data as NavStatusPayload)
+        break
+      case CH.NAV_PATH:
+        pathFeed.push(frame.data as NavPathPayload)
+        break
+      case CH.VELOCITY:
+        velocityFeed.push(frame.data as VelocityPayload, frame.ts)
         break
       case CH.HELLO:
         useConnectionStore.getState().setHello(frame.data as HelloPayload)

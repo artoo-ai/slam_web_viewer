@@ -58,6 +58,17 @@ def main() -> None:
                 width=3, height=2, resolution=0.05, origin=[-1.5, -2.0, 0.0],
                 cells=np.array([0, 100, -1, 50, 50, -1], dtype=np.int8)),
             seq=9, ts=1718000005.0),
+        "nav_path.bin": protocol.make_frame(
+            protocol.CH_NAV_PATH,
+            protocol.nav_path_payload(np.array(
+                [[0.0, 0.0, 0.0], [1.0, 0.5, 0.4636], [2.0, 1.0, 0.4636]],
+                dtype=np.float32)),
+            seq=5, ts=1718000007.0),
+        "velocity.bin": protocol.make_frame(
+            protocol.CH_VELOCITY,
+            protocol.velocity_payload(cmd_vx=0.4, cmd_wz=1.0,
+                                      odom_vx=0.38, odom_wz=0.03),
+            seq=12, ts=1718000008.0),
         "nav_status.bin": protocol.make_frame(
             protocol.CH_NAV_STATUS,
             protocol.nav_status_payload("navigating", goal_id="g-001",
@@ -107,6 +118,16 @@ def main() -> None:
             "grid": {"width": 3, "height": 2, "resolution": 0.05,
                      "origin": [-1.5, -2.0, 0.0],
                      "cells": [0, 100, 255, 50, 50, 255]},
+        },
+        "nav_path.bin": {
+            "topic": "nav_path", "ts": 1718000007.0, "seq": 5,
+            "path": {"frame": "map",
+                     "poses": [[0.0, 0.0, 0.0], [1.0, 0.5, 0.4636], [2.0, 1.0, 0.4636]]},
+        },
+        "velocity.bin": {
+            "topic": "velocity", "ts": 1718000008.0, "seq": 12,
+            "data": {"cmd": {"vx": 0.4, "wz": 1.0},
+                     "odom": {"vx": 0.38, "wz": 0.03}},
         },
         "nav_status.bin": {
             "topic": "nav_status", "ts": 1718000006.0, "seq": 3,

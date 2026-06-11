@@ -112,6 +112,46 @@
       ]
     }
   },
+  "nav_path.bin": {
+    "topic": "nav_path",
+    "ts": 1718000007.0,
+    "seq": 5,
+    "path": {
+      "frame": "map",
+      "poses": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.5,
+          0.4636
+        ],
+        [
+          2.0,
+          1.0,
+          0.4636
+        ]
+      ]
+    }
+  },
+  "velocity.bin": {
+    "topic": "velocity",
+    "ts": 1718000008.0,
+    "seq": 12,
+    "data": {
+      "cmd": {
+        "vx": 0.4,
+        "wz": 1.0
+      },
+      "odom": {
+        "vx": 0.38,
+        "wz": 0.03
+      }
+    }
+  },
   "nav_status.bin": {
     "topic": "nav_status",
     "ts": 1718000006.0,

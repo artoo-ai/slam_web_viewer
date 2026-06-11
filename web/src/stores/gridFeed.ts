@@ -1,38 +1,48 @@
-/** Occupancy grid feed — same non-reactive pattern as scanFeed. Updates at
- *  ~0.5 Hz; the renderer polls `version` in useFrame. Cells are decoded from
- *  RLE here (once per frame received, off the render path). */
+/** Occupancy grid feeds, one per layer (map, costmap_global, costmap_local) —
+ *  same non-reactive pattern as scanFeed. The renderer polls `version` in
+ *  useFrame. RLE decode happens here, once per received frame. */
 
 import { decodeGridRle } from '../lib/transport/protocol'
 import type { OccupancyGridPayload } from '../types/channels'
+
+export type GridLayer = 'map' | 'costmap_global' | 'costmap_local'
 
 export interface GridSnapshot {
   width: number
   height: number
   resolution: number
   origin: [number, number, number]
-  /** flat row-major cells: 0..100 occupancy, 255 unknown */
+  /** flat row-major cells: 0..100 occupancy/cost, 255 unknown */
   cells: Uint8Array
 }
 
-let latest: GridSnapshot | null = null
-let version = 0
+interface LayerFeed {
+  latest: GridSnapshot | null
+  version: number
+}
+
+const feeds: Record<GridLayer, LayerFeed> = {
+  map: { latest: null, version: 0 },
+  costmap_global: { latest: null, version: 0 },
+  costmap_local: { latest: null, version: 0 },
+}
 
 export const gridFeed = {
   push(payload: OccupancyGridPayload) {
     if (payload.encoding !== 'rle') return // unknown encodings ignored per protocol
-    latest = {
+    const layer = (payload.layer ?? 'map') as GridLayer
+    const feed = feeds[layer]
+    if (!feed) return // unknown layers ignored per protocol
+    feed.latest = {
       width: payload.width,
       height: payload.height,
       resolution: payload.resolution,
       origin: payload.origin,
       cells: decodeGridRle(payload.data, payload.width * payload.height),
     }
-    version++
+    feed.version++
   },
-  get latest() {
-    return latest
-  },
-  get version() {
-    return version
+  layer(layer: GridLayer): LayerFeed {
+    return feeds[layer]
   },
 }

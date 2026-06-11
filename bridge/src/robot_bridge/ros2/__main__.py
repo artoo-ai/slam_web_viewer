@@ -59,7 +59,8 @@ NAV_FEEDBACK_MIN_INTERVAL = 0.5  # rate-limit nav_status to 2 Hz
 class Ros2Bridge:
     def __init__(self, args: argparse.Namespace):
         self.args = args
-        channels = ["pose", "occupancy_grid", "stats", "log", "nav_status"]
+        channels = ["pose", "occupancy_grid", "stats", "log", "nav_status",
+                    "nav_path", "velocity"]
         if args.scan_topic:
             channels.append("scan")
         self.server = BridgeServer(
@@ -77,6 +78,14 @@ class Ros2Bridge:
         self.scan_frames = 0
         self.total_pts = 0
         self._scan_frames_last = 0
+
+        # velocity comparison (smear detector food): latest commanded and
+        # measured body velocities, written by ROS callbacks
+        self.cmd_vel = (0.0, 0.0)   # vx, wz
+        self.cmd_vel_t = 0.0        # monotonic stamp; cmd decays to 0 when stale
+        self.odom_vel = (0.0, 0.0)
+        self._tf_buffer = None
+        self._tf_warned = False
 
         # nav state
         self._ros_jobs: queue.Queue = queue.Queue()
@@ -105,17 +114,41 @@ class Ros2Bridge:
         if self.args.odom_topic:
             node.create_subscription(Odometry, self.args.odom_topic, self.on_odom, 50)
             subscribed.append(self.args.odom_topic)
+        # slam_toolbox and Nav2 costmaps publish transient-local; match that QoS
+        from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+        map_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL)
         if self.args.map_topic:
-            # slam_toolbox publishes /map transient-local; match that QoS
-            from rclpy.qos import (
-                DurabilityPolicy, QoSProfile, ReliabilityPolicy)
-            map_qos = QoSProfile(
-                depth=1,
-                reliability=ReliabilityPolicy.RELIABLE,
-                durability=DurabilityPolicy.TRANSIENT_LOCAL)
             node.create_subscription(OccupancyGrid, self.args.map_topic,
                                      self.on_map, map_qos)
             subscribed.append(self.args.map_topic)
+        if self.args.global_costmap_topic:
+            node.create_subscription(
+                OccupancyGrid, self.args.global_costmap_topic,
+                lambda msg: self.on_costmap(msg, "costmap_global"), map_qos)
+            subscribed.append(self.args.global_costmap_topic)
+        if self.args.local_costmap_topic:
+            node.create_subscription(
+                OccupancyGrid, self.args.local_costmap_topic,
+                lambda msg: self.on_costmap(msg, "costmap_local"), map_qos)
+            subscribed.append(self.args.local_costmap_topic)
+        if self.args.plan_topic:
+            from nav_msgs.msg import Path
+            node.create_subscription(Path, self.args.plan_topic, self.on_plan, 10)
+            subscribed.append(self.args.plan_topic)
+        if self.args.cmd_vel_topic:
+            from geometry_msgs.msg import Twist
+            node.create_subscription(Twist, self.args.cmd_vel_topic,
+                                     self.on_cmd_vel, 10)
+            subscribed.append(self.args.cmd_vel_topic)
+
+        # TF listener: local costmap origins arrive in the odom frame and must
+        # be re-expressed in map (the wire protocol's only frame)
+        from tf2_ros import Buffer, TransformListener
+        self._tf_buffer = Buffer()
+        TransformListener(self._tf_buffer, node)
 
         try:
             from nav2_msgs.action import NavigateToPose
@@ -168,7 +201,55 @@ class Ros2Bridge:
             if step < 1.0:  # ignore SLAM-correction jumps
                 self.distance_m += step
         self.last_xy = (p[0], p[1])
+        self.odom_vel = (float(msg.twist.twist.linear.x),
+                         float(msg.twist.twist.angular.z))
         self._post(protocol.CH_POSE, protocol.pose_payload(p, q),
+                   stamp_to_seconds(msg.header.stamp))
+
+    def on_cmd_vel(self, msg) -> None:
+        self.cmd_vel = (float(msg.linear.x), float(msg.angular.z))
+        self.cmd_vel_t = time.monotonic()
+
+    def on_costmap(self, msg, layer: str) -> None:
+        grid = occupancygrid_to_grid(msg)
+        frame = msg.header.frame_id
+        if frame and frame != "map":
+            origin = self._origin_to_map(grid["origin"], frame)
+            if origin is None:
+                return  # TF not ready yet — skip this update
+            grid["origin"] = origin
+        self._post(protocol.CH_OCCUPANCY_GRID,
+                   protocol.occupancy_grid_payload(layer=layer, **grid),
+                   stamp_to_seconds(msg.header.stamp))
+
+    def _origin_to_map(self, origin, frame: str):
+        """Re-express a 2D grid origin pose from `frame` into the map frame."""
+        try:
+            import rclpy.time
+            t = self._tf_buffer.lookup_transform("map", frame, rclpy.time.Time())
+        except Exception:  # noqa: BLE001 — tf2 raises several lookup error types
+            if not self._tf_warned:
+                self._tf_warned = True
+                log.warning("no map->%s TF yet; dropping costmap updates until it appears", frame)
+            return None
+        tq = t.transform.rotation
+        tyaw = math.atan2(2.0 * (tq.w * tq.z + tq.x * tq.y),
+                          1.0 - 2.0 * (tq.y * tq.y + tq.z * tq.z))
+        ox, oy, otheta = origin
+        c, s = math.cos(tyaw), math.sin(tyaw)
+        return (t.transform.translation.x + c * ox - s * oy,
+                t.transform.translation.y + s * ox + c * oy,
+                tyaw + otheta)
+
+    def on_plan(self, msg) -> None:
+        import numpy as np
+        poses = np.empty((len(msg.poses), 3), dtype=np.float32)
+        for i, ps in enumerate(msg.poses):
+            o = ps.pose.orientation
+            poses[i] = (ps.pose.position.x, ps.pose.position.y,
+                        math.atan2(2.0 * (o.w * o.z + o.x * o.y),
+                                   1.0 - 2.0 * (o.y * o.y + o.z * o.z)))
+        self._post(protocol.CH_NAV_PATH, protocol.nav_path_payload(poses),
                    stamp_to_seconds(msg.header.stamp))
 
     def on_map(self, msg) -> None:
@@ -295,6 +376,19 @@ class Ros2Bridge:
 
     # -- main ----------------------------------------------------------------
 
+    async def velocity_loop(self) -> None:
+        """cmd vs odom velocities at 10 Hz — the smear detector's data feed.
+        Commanded velocity decays to 0 when Nav2 stops publishing (>0.5 s)."""
+        while True:
+            await asyncio.sleep(0.1)
+            cmd_vx, cmd_wz = self.cmd_vel
+            if time.monotonic() - self.cmd_vel_t > 0.5:
+                cmd_vx, cmd_wz = 0.0, 0.0
+            odom_vx, odom_wz = self.odom_vel
+            self.server.broadcast(protocol.CH_VELOCITY, protocol.velocity_payload(
+                cmd_vx=round(cmd_vx, 3), cmd_wz=round(cmd_wz, 3),
+                odom_vx=round(odom_vx, 3), odom_wz=round(odom_wz, 3)))
+
     async def stats_loop(self) -> None:
         while True:
             await asyncio.sleep(1.0)
@@ -315,6 +409,7 @@ class Ros2Bridge:
         await asyncio.gather(
             self.server.serve_forever(self.args.host, self.args.port),
             self.stats_loop(),
+            self.velocity_loop(),
         )
 
 
@@ -330,6 +425,14 @@ def main() -> None:
                         help="nav_msgs/Odometry topic (default from --stack)")
     parser.add_argument("--map-topic", default=None,
                         help="nav_msgs/OccupancyGrid topic ('' disables; default from --stack)")
+    parser.add_argument("--global-costmap-topic", default="/global_costmap/costmap",
+                        help="Nav2 global costmap OccupancyGrid ('' disables)")
+    parser.add_argument("--local-costmap-topic", default="/local_costmap/costmap",
+                        help="Nav2 local costmap OccupancyGrid ('' disables)")
+    parser.add_argument("--plan-topic", default="/plan",
+                        help="Nav2 global plan nav_msgs/Path ('' disables)")
+    parser.add_argument("--cmd-vel-topic", default="/cmd_vel",
+                        help="commanded Twist for the velocity channel ('' disables)")
     parser.add_argument("--decimate", type=int, default=1,
                         help="keep every k-th scan point")
     parser.add_argument("--intensity-scale", type=float, default=1.0 / 255.0,

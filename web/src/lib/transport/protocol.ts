@@ -15,6 +15,8 @@ export const CH = {
   CMD_ACK: 'cmd_ack',
   OCCUPANCY_GRID: 'occupancy_grid',
   NAV_STATUS: 'nav_status',
+  NAV_PATH: 'nav_path',
+  VELOCITY: 'velocity',
 } as const
 
 export const SCAN_STRIDE_FLOATS = 4 // x, y, z, intensity

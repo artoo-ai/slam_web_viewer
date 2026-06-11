@@ -47,13 +47,16 @@ Every message is a MessagePack map:
 | `log` | event | map `{ "level": "debug"\|"info"\|"warn"\|"error", "message": str }` |
 | `status` | event | map `{ "event": str, "label"?: str, "count"?: uint }` — e.g. `loop_closure`, `tracking_lost`. Feeds TTS later. |
 | `cmd_ack` | reply | map — reply to a command, correlated by `id` (see Commands) |
-| `occupancy_grid` | ~0.5 Hz / on change | map — see below |
+| `occupancy_grid` | ~0.5-2 Hz / on change | map — see below |
 | `nav_status` | event + ~2 Hz while navigating | map `{ "state": "accepted"\|"navigating"\|"succeeded"\|"aborted"\|"canceled"\|"rejected", "goal_id"?: str, "distance_m"?: float, "eta_s"?: float, "message"?: str }` |
+| `nav_path` | on plan change | map `{ "frame": "map", "poses": bin float32 LE [x, y, theta] × N }` — Nav2 global plan; empty `poses` clears the displayed path |
+| `velocity` | 10 Hz | map `{ "cmd": { "vx": float, "wz": float }, "odom": { "vx": float, "wz": float } }` — commanded vs odometry-measured body velocities (m/s, rad/s). Divergence (cmd spinning, odom not following) is the map-smear precursor. |
 
 `occupancy_grid` payload:
 
 ```jsonc
 {
+  "layer": "map",          // "map" | "costmap_global" | "costmap_local" (absent = "map")
   "width": 260,            // cells
   "height": 160,           // cells
   "resolution": 0.05,      // meters per cell
@@ -64,7 +67,10 @@ Every message is a MessagePack map:
 ```
 
 Cell values match ROS `nav_msgs/OccupancyGrid`: `0..100` = occupancy probability,
-`255` (int8 `-1` cast to uint8) = unknown.
+`255` (int8 `-1` cast to uint8) = unknown. For costmap layers the same scale carries
+Nav2 cost (`1..98` gradient, `99` inscribed, `100` lethal). Costmap origins are
+always expressed in the **map frame** — the bridge transforms the local costmap's
+odom-frame origin before sending.
 
 RLE encoding: a sequence of 3-byte records `[uint8 value, uint16 LE run_length]`,
 run_length 1..65535. The decoded cell count MUST equal `width * height`.
@@ -89,9 +95,7 @@ run_length 1..65535. The decoded cell count MUST equal `width * height`.
 | `imu` | map `{ "orientation": [x,y,z,w], "angular_vel": [x,y,z], "linear_accel": [x,y,z] }` (decimated to 10 Hz by bridge) |
 | `detections` | map `{ "boxes": [{ "center": [x,y,z], "size": [x,y,z], "yaw": float, "class_id": uint, "label": str, "confidence": float }] }` — source-agnostic: robot-side YOLO or browser-side inference both produce this shape |
 | `processing` | map `{ "frame_ms": float, "icp_mean": float, "icp_std": float }` |
-| `velocity` | map `{ "linear_ms": float, "angular_degs": float }` |
 | `loop_closure` | map `{ "src_kf": uint, "dst_kf": uint, "error": float, "detector": str, "accepted": bool }` |
-| `nav_path` | map `{ "frame": str, "poses": bin float32 [x,y,theta] × N }` |
 
 ## Commands (browser → robot)
 

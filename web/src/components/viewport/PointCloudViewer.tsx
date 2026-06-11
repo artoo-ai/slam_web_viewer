@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { scanFeed } from '../../stores/scanFeed'
+import { useLayersStore } from '../../stores/layersStore'
 
 /** Live LiDAR scan layer. Geometry is preallocated once at MAX_POINTS; each new
  *  scan de-interleaves xyzI into the position/intensity attributes, flags
@@ -41,6 +42,7 @@ const FRAG = /* glsl */ `
 `
 
 export function PointCloudViewer() {
+  const visible = useLayersStore((s) => s.scan)
   const lastSeq = useRef(-1)
 
   const { geometry, material, positionAttr, intensityAttr } = useMemo(() => {
@@ -80,5 +82,5 @@ export function PointCloudViewer() {
     geometry.setDrawRange(0, n)
   })
 
-  return <points geometry={geometry} material={material} frustumCulled={false} />
+  return <points geometry={geometry} material={material} frustumCulled={false} visible={visible} />
 }

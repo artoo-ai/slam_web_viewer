@@ -73,3 +73,26 @@ class ExplorationGrid:
         """Flat row-major int8 cells: static value where visited, unknown elsewhere."""
         out = np.where(self.visited, self.static, UNKNOWN).astype(np.int8)
         return out.ravel()
+
+    def costmap(self, inflation_radius_m: float = 0.30) -> np.ndarray:
+        """Nav2-style cost from the revealed grid: 100 lethal at obstacles, a
+        distance-based gradient inside the inflation radius, 0 free, -1 unknown.
+        Pure numpy (Chebyshev-ish via iterative dilation) — close enough to see
+        where passages pinch shut."""
+        snap = np.where(self.visited, self.static, UNKNOWN).astype(np.int8)
+        lethal = snap == OCCUPIED
+        steps = max(1, int(round(inflation_radius_m / RESOLUTION)))
+        cost = np.where(lethal, 100, np.where(snap == UNKNOWN, UNKNOWN, 0)).astype(np.int8)
+        ring = lethal.copy()
+        for i in range(1, steps + 1):
+            grown = np.zeros_like(ring)
+            grown[1:, :] |= ring[:-1, :]
+            grown[:-1, :] |= ring[1:, :]
+            grown[:, 1:] |= ring[:, :-1]
+            grown[:, :-1] |= ring[:, 1:]
+            grown |= ring
+            band = grown & ~ring & (snap == FREE)
+            # 99 inscribed next to lethal, decaying outward
+            cost[band] = max(1, int(99 * (1.0 - i / (steps + 1))))
+            ring = grown
+        return cost.ravel()

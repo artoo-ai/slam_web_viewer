@@ -1,16 +1,15 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { poseFeed } from '../../stores/poseFeed'
+import { pathFeed } from '../../stores/pathFeed'
 import { useLayersStore } from '../../stores/layersStore'
 
-/** Robot path polyline fed from the poseFeed ring buffer. Preallocated position
- *  attribute + setDrawRange; polled via poseFeed.version in useFrame. */
+/** Nav2 global plan as a bright polyline just above the costmap layers. */
 
-const CAPACITY = 20_000
+const CAPACITY = 4096
 
-export function TrajectoryOverlay() {
-  const visible = useLayersStore((s) => s.trajectory)
+export function PathOverlay() {
+  const visible = useLayersStore((s) => s.path)
   const lastVersion = useRef(-1)
 
   const { line, positionAttr, geometry } = useMemo(() => {
@@ -19,17 +18,23 @@ export function TrajectoryOverlay() {
     positionAttr.setUsage(THREE.DynamicDrawUsage)
     geometry.setAttribute('position', positionAttr)
     geometry.setDrawRange(0, 0)
-    const material = new THREE.LineBasicMaterial({ color: 0x38bdf8 })
+    const material = new THREE.LineBasicMaterial({ color: 0xf59e0b })
     const line = new THREE.Line(geometry, material)
     line.frustumCulled = false
     return { line, positionAttr, geometry }
   }, [])
 
   useFrame(() => {
-    if (poseFeed.version === lastVersion.current) return
-    lastVersion.current = poseFeed.version
-    const n = poseFeed.trajectoryCount
-    ;(positionAttr.array as Float32Array).set(poseFeed.trajectory.subarray(0, n * 3))
+    if (pathFeed.version === lastVersion.current) return
+    lastVersion.current = pathFeed.version
+    const poses = pathFeed.poses
+    const n = Math.min(pathFeed.count, CAPACITY)
+    const pos = positionAttr.array as Float32Array
+    for (let i = 0; i < n; i++) {
+      pos[i * 3] = poses[i * 3]
+      pos[i * 3 + 1] = poses[i * 3 + 1]
+      pos[i * 3 + 2] = 0.05
+    }
     positionAttr.needsUpdate = true
     geometry.setDrawRange(0, n)
   })
