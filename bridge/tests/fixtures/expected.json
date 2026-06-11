@@ -1,0 +1,102 @@
+{
+  "hello.bin": {
+    "topic": "hello",
+    "ts": 1718000000.0,
+    "seq": 0,
+    "data": {
+      "protocol": 1,
+      "server": "mock",
+      "channels": [
+        "scan",
+        "pose",
+        "stats",
+        "log",
+        "status"
+      ],
+      "app_version": "0.1.0"
+    }
+  },
+  "scan_4pts.bin": {
+    "topic": "scan",
+    "ts": 1718000001.5,
+    "seq": 42,
+    "points": [
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.5,
+        0.25
+      ],
+      [
+        0.0,
+        -2.0,
+        1.0,
+        0.5
+      ],
+      [
+        -3.5,
+        4.25,
+        2.5,
+        1.0
+      ]
+    ]
+  },
+  "pose.bin": {
+    "topic": "pose",
+    "ts": 1718000002.25,
+    "seq": 100,
+    "data": {
+      "p": [
+        1.5,
+        -2.0,
+        0.3
+      ],
+      "q": [
+        0.0,
+        0.0,
+        0.7071067811865476,
+        0.7071067811865476
+      ],
+      "frame": "map"
+    }
+  },
+  "stats.bin": {
+    "topic": "stats",
+    "ts": 1718000003.0,
+    "seq": 33,
+    "data": {
+      "keyframes": 12,
+      "total_pts": 360000,
+      "distance_m": 5.5,
+      "duration_s": 33.0,
+      "scan_hz": 10.0,
+      "health": 0.97,
+      "clients": 1
+    }
+  },
+  "log.bin": {
+    "topic": "log",
+    "ts": 1718000004.0,
+    "seq": 7,
+    "data": {
+      "level": "warn",
+      "message": "tracking degraded"
+    }
+  },
+  "cmd_set_param.bin": {
+    "command": {
+      "cmd": "set_param",
+      "id": 8,
+      "node": "slam",
+      "params": {
+        "voxel_size": 0.1
+      }
+    }
+  }
+}

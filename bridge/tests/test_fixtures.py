@@ -1,0 +1,33 @@
+"""Assert committed golden fixtures decode to expected.json (cross-language contract)."""
+
+import json
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from robot_bridge import protocol
+
+FIXTURES = Path(__file__).parent / "fixtures"
+EXPECTED = json.loads((FIXTURES / "expected.json").read_text())
+
+FRAME_FIXTURES = [n for n, e in EXPECTED.items() if "topic" in e]
+
+
+@pytest.mark.parametrize("name", FRAME_FIXTURES)
+def test_fixture_decodes_to_expected(name):
+    frame = protocol.parse_frame((FIXTURES / name).read_bytes())
+    exp = EXPECTED[name]
+    assert frame["topic"] == exp["topic"]
+    assert frame["ts"] == exp["ts"]
+    assert frame["seq"] == exp["seq"]
+    if "points" in exp:
+        pts = protocol.unpack_scan(frame["data"])
+        np.testing.assert_array_equal(pts, np.array(exp["points"], dtype=np.float32))
+    else:
+        assert frame["data"] == exp["data"]
+
+
+def test_command_fixture_parses():
+    cmd = protocol.parse_command((FIXTURES / "cmd_set_param.bin").read_bytes())
+    assert cmd == EXPECTED["cmd_set_param.bin"]["command"]
