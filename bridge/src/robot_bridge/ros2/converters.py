@@ -46,6 +46,27 @@ def pointcloud2_to_xyzi(msg, *, decimate: int = 1,
     return np.ascontiguousarray(out)
 
 
+def transform_xyzi(xyzi: np.ndarray,
+                   translation: tuple[float, float, float],
+                   quaternion: tuple[float, float, float, float]) -> np.ndarray:
+    """Rigid-transform the xyz columns of an (N, 4) [x,y,z,intensity] array.
+
+    `quaternion` is [x, y, z, w]. Intensity passes through. Pure numpy so it is
+    unit-testable without ROS; the bridge feeds it TF lookups.
+    """
+    qx, qy, qz, qw = quaternion
+    # quaternion -> rotation matrix
+    rot = np.array([
+        [1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qz * qw), 2 * (qx * qz + qy * qw)],
+        [2 * (qx * qy + qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz - qx * qw)],
+        [2 * (qx * qz - qy * qw), 2 * (qy * qz + qx * qw), 1 - 2 * (qx * qx + qy * qy)],
+    ], dtype=np.float64)
+    out = xyzi.copy()
+    out[:, :3] = (xyzi[:, :3] @ rot.T.astype(np.float32)) + \
+        np.asarray(translation, dtype=np.float32)
+    return out
+
+
 def occupancygrid_to_grid(msg) -> dict:
     """Convert a nav_msgs/msg/OccupancyGrid to the wire payload's components.
 

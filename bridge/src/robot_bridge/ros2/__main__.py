@@ -39,17 +39,19 @@ from .converters import (
     odometry_to_pose,
     pointcloud2_to_xyzi,
     stamp_to_seconds,
+    transform_xyzi,
 )
 
 log = logging.getLogger("robot_bridge.ros2")
 
-# Topic presets per slam_bringup stack. /cloud_registered is FAST-LIO2's
-# WORLD-frame cloud — the wire protocol requires scan points in map frame
-# (/cloud_registered_body is body frame: RTABMap's input, not ours). The 2D
-# stack has no world-frame cloud, so scan is disabled there.
+# Topic presets per slam_bringup stack. The wire protocol requires scan points
+# in the map frame; the bridge TF-transforms any cloud whose header.frame_id
+# isn't "map" (2d: /livox/lidar arrives in the lidar body frame and rides
+# map->odom->base_link->livox TF; 3d: /cloud_registered arrives in FAST-LIO2's
+# camera_init odom frame and rides RTABMap's map->camera_init correction).
 STACK_PRESETS = {
     "3d": {"scan": "/cloud_registered", "odom": "/Odometry", "map": "/map"},
-    "2d": {"scan": "", "odom": "/odom", "map": "/map"},
+    "2d": {"scan": "/livox/lidar", "odom": "/odom", "map": "/map"},
 }
 
 NAV_ACTION = "navigate_to_pose"
@@ -189,10 +191,29 @@ class Ros2Bridge:
     def on_scan(self, msg) -> None:
         xyzi = pointcloud2_to_xyzi(msg, decimate=self.args.decimate,
                                    intensity_scale=self.args.intensity_scale)
+        frame = msg.header.frame_id
+        if frame and frame != "map":
+            tq = self._lookup_map_tf(frame)
+            if tq is None:
+                return  # TF chain not up yet — drop until it appears
+            xyzi = transform_xyzi(xyzi, *tq)
         self.scan_frames += 1
         self.total_pts += len(xyzi)
         self._post(protocol.CH_SCAN, protocol.pack_scan(xyzi),
                    stamp_to_seconds(msg.header.stamp))
+
+    def _lookup_map_tf(self, frame: str):
+        """Latest map<-frame transform as ((x,y,z), (qx,qy,qz,qw)), or None."""
+        try:
+            import rclpy.time
+            t = self._tf_buffer.lookup_transform("map", frame, rclpy.time.Time())
+        except Exception:  # noqa: BLE001 — tf2 raises several lookup error types
+            if not self._tf_warned:
+                self._tf_warned = True
+                log.warning("no map->%s TF yet; dropping frames until it appears", frame)
+            return None
+        tr, ro = t.transform.translation, t.transform.rotation
+        return (tr.x, tr.y, tr.z), (ro.x, ro.y, ro.z, ro.w)
 
     def on_odom(self, msg) -> None:
         p, q = odometry_to_pose(msg)
@@ -224,22 +245,14 @@ class Ros2Bridge:
 
     def _origin_to_map(self, origin, frame: str):
         """Re-express a 2D grid origin pose from `frame` into the map frame."""
-        try:
-            import rclpy.time
-            t = self._tf_buffer.lookup_transform("map", frame, rclpy.time.Time())
-        except Exception:  # noqa: BLE001 — tf2 raises several lookup error types
-            if not self._tf_warned:
-                self._tf_warned = True
-                log.warning("no map->%s TF yet; dropping costmap updates until it appears", frame)
+        tq = self._lookup_map_tf(frame)
+        if tq is None:
             return None
-        tq = t.transform.rotation
-        tyaw = math.atan2(2.0 * (tq.w * tq.z + tq.x * tq.y),
-                          1.0 - 2.0 * (tq.y * tq.y + tq.z * tq.z))
+        (tx, ty, _), (qx, qy, qz, qw) = tq
+        tyaw = math.atan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
         ox, oy, otheta = origin
         c, s = math.cos(tyaw), math.sin(tyaw)
-        return (t.transform.translation.x + c * ox - s * oy,
-                t.transform.translation.y + s * ox + c * oy,
-                tyaw + otheta)
+        return (tx + c * ox - s * oy, ty + s * ox + c * oy, tyaw + otheta)
 
     def on_plan(self, msg) -> None:
         import numpy as np

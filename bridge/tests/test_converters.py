@@ -77,6 +77,27 @@ def test_pointcloud2_missing_field():
         pointcloud2_to_xyzi(cloud)
 
 
+def test_transform_xyzi_rotation_translation():
+    from robot_bridge.ros2.converters import transform_xyzi
+    import math
+    # 90 deg yaw about z + translate (1, 2, 3): (1,0,0) -> (0,1,0) -> (1,3,3)
+    s45 = math.sin(math.pi / 4)
+    pts = np.array([[1.0, 0.0, 0.0, 0.7],
+                    [0.0, 1.0, 0.0, 0.2]], dtype=np.float32)
+    out = transform_xyzi(pts, (1.0, 2.0, 3.0), (0.0, 0.0, s45, s45))
+    np.testing.assert_allclose(out[0, :3], [1.0, 3.0, 3.0], atol=1e-6)
+    np.testing.assert_allclose(out[1, :3], [0.0, 2.0, 3.0], atol=1e-6)
+    np.testing.assert_array_equal(out[:, 3], pts[:, 3])  # intensity untouched
+    assert out.dtype == np.float32
+
+
+def test_transform_xyzi_identity():
+    from robot_bridge.ros2.converters import transform_xyzi
+    pts = np.arange(8, dtype=np.float32).reshape(2, 4)
+    out = transform_xyzi(pts, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0))
+    np.testing.assert_allclose(out, pts, atol=1e-7)
+
+
 def test_odometry_to_pose():
     msg = SimpleNamespace(pose=SimpleNamespace(pose=SimpleNamespace(
         position=SimpleNamespace(x=1.0, y=2.0, z=0.3),
