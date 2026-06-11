@@ -1,0 +1,41 @@
+.layout {
+  display: grid;
+  grid-template-areas:
+    "viewport sidebar"
+    "statusbar statusbar";
+  grid-template-columns: 1fr 320px;
+  grid-template-rows: 1fr 28px;
+  height: 100%;
+}
+
+.layout-viewport {
+  grid-area: viewport;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.layout-sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+}
+
+.layout-statusbar {
+  grid-area: statusbar;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-panel-header);
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+}
