@@ -30,9 +30,19 @@ fi
 ensure_venv() {
     # ensure_venv <venv_path> <extra venv flags...>
     local venv="$1"; shift
+    # a venv without pip is a half-created leftover from a failed attempt
+    if [[ -e "$venv" && ! -x "$venv/bin/pip" ]]; then
+        echo "start_bridge: removing broken venv at $venv"
+        rm -rf "$venv"
+    fi
     if [[ ! -x "$venv/bin/python" ]]; then
         echo "start_bridge: creating venv at $venv"
-        python3 -m venv "$@" "$venv"
+        if ! python3 -m venv "$@" "$venv"; then
+            rm -rf "$venv"
+            echo "start_bridge: ERROR — venv creation failed (python3-venv not installed?)." >&2
+            echo "             Run ./install_jetson.sh, or: sudo apt install python3-venv" >&2
+            exit 1
+        fi
     fi
     if ! "$venv/bin/python" -c "import robot_bridge" &>/dev/null; then
         echo "start_bridge: installing bridge package into $venv"

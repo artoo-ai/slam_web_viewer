@@ -30,6 +30,18 @@ if ! command -v python3 &>/dev/null; then
     exit 1
 fi
 
+# python3-venv is not installed by default on Ubuntu — venv creation needs it
+if ! python3 -m ensurepip --version &>/dev/null; then
+    echo "-- python3-venv missing; installing via apt (sudo may prompt for password)"
+    sudo apt-get install -y python3-venv
+fi
+
+# a venv without pip is a half-created leftover from a failed attempt
+if [[ -e "$VENV" && ! -x "$VENV/bin/pip" ]]; then
+    echo "-- removing broken venv: $VENV"
+    rm -rf "$VENV"
+fi
+
 if [[ -x "$VENV/bin/python" ]]; then
     echo "-- venv exists: $VENV"
 else
