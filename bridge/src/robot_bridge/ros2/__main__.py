@@ -385,6 +385,55 @@ class Ros2Bridge:
             self._active_goal_id = None
             self._goal_handle = None
 
+    def _ros_set_param(self, cmd_id: int, client: Client,
+                       node_name: str, params: dict) -> None:
+        """Forward set_param to a target node's parameter service (ROS thread)."""
+        from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
+        from rcl_interfaces.srv import SetParameters
+
+        def to_param(name: str, value) -> Parameter:
+            pv = ParameterValue()
+            if isinstance(value, bool):
+                pv.type, pv.bool_value = ParameterType.PARAMETER_BOOL, value
+            elif isinstance(value, int):
+                pv.type, pv.integer_value = ParameterType.PARAMETER_INTEGER, value
+            elif isinstance(value, float):
+                pv.type, pv.double_value = ParameterType.PARAMETER_DOUBLE, value
+            else:
+                pv.type, pv.string_value = ParameterType.PARAMETER_STRING, str(value)
+            return Parameter(name=name, value=pv)
+
+        srv = f"/{node_name.lstrip('/')}/set_parameters"
+        cli = self._node.create_client(SetParameters, srv)
+        if not cli.wait_for_service(timeout_sec=1.0):
+            self._node.destroy_client(cli)
+            self._reply_threadsafe(client, protocol.param_ack_payload(
+                cmd_id, node_name, {}, params))
+            self.log_clients("warn", f"set_param: {srv} not available")
+            return
+        request = SetParameters.Request(
+            parameters=[to_param(k, v) for k, v in params.items()])
+        future = cli.call_async(request)
+
+        def done(f):
+            accepted, rejected = {}, {}
+            try:
+                results = f.result().results
+                for (name, value), result in zip(params.items(), results):
+                    (accepted if result.successful else rejected)[name] = value
+                if rejected:
+                    self.log_clients("warn", f"set_param {node_name}: rejected {rejected}")
+                else:
+                    self.log_clients("info", f"set_param {node_name}: {accepted}")
+            except Exception as e:  # noqa: BLE001
+                rejected = params
+                self.log_clients("warn", f"set_param {node_name} failed: {e}")
+            self._node.destroy_client(cli)
+            self._reply_threadsafe(client, protocol.param_ack_payload(
+                cmd_id, node_name, accepted, rejected))
+
+        future.add_done_callback(done)
+
     def _ros_cancel_goal(self, cmd_id: int, client: Client, goal_id) -> None:
         handle = self._goal_handle
         ok = handle is not None and goal_id in (None, self._active_goal_id)
@@ -400,11 +449,11 @@ class Ros2Bridge:
                 await self.server.reply_ack(
                     client, protocol.pong_payload(cmd.get("id", 0), cmd.get("t", 0.0)))
             case "set_param":
-                # TODO(jetson): forward to the target node via rclpy parameter client.
-                # Until then: log and reject so the UI shows the truth.
-                log.info("set_param (not yet forwarded): %s", cmd)
-                await self.server.reply_ack(client, protocol.param_ack_payload(
-                    cmd.get("id", 0), cmd.get("node", ""), {}, cmd.get("params", {})))
+                cmd_id = cmd.get("id", 0)
+                node_name = str(cmd.get("node", ""))
+                params = dict(cmd.get("params", {}))
+                self._ros_jobs.put(
+                    lambda: self._ros_set_param(cmd_id, client, node_name, params))
             case "send_goal":
                 cmd_id = cmd.get("id", 0)
                 x, y = float(cmd.get("x", 0.0)), float(cmd.get("y", 0.0))

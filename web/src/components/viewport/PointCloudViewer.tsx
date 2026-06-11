@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { scanFeed } from '../../stores/scanFeed'
 import { useLayersStore } from '../../stores/layersStore'
+import { useViewerParams } from '../../stores/viewerParamsStore'
 
 /** Live LiDAR scan layer. Geometry is preallocated once at MAX_POINTS; each new
  *  scan de-interleaves xyzI into the position/intensity attributes, flags
@@ -15,10 +16,15 @@ const VERT = /* glsl */ `
   attribute float intensity;
   varying float vIntensity;
   uniform float uPointSize;
+  uniform float uColorMode;  // 0 = intensity, 1 = height
+  uniform float uZMin;
+  uniform float uZMax;
   void main() {
-    vIntensity = intensity;
+    vIntensity = uColorMode < 0.5
+      ? intensity
+      : clamp((position.z - uZMin) / (uZMax - uZMin), 0.0, 1.0);
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = clamp(uPointSize * (10.0 / -mvPosition.z), 1.0, 6.0);
+    gl_PointSize = clamp(uPointSize * (10.0 / -mvPosition.z), 1.0, 12.0);
     gl_Position = projectionMatrix * mvPosition;
   }
 `
@@ -57,12 +63,22 @@ export function PointCloudViewer() {
     const material = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
-      uniforms: { uPointSize: { value: 3.0 } },
+      uniforms: {
+        uPointSize: { value: 3.0 },
+        uColorMode: { value: 0.0 },
+        uZMin: { value: 0.0 },
+        uZMax: { value: 2.5 },
+      },
     })
     return { geometry, material, positionAttr, intensityAttr }
   }, [])
 
   useFrame(() => {
+    const params = useViewerParams.getState()
+    material.uniforms.uPointSize.value = params.pointSize
+    material.uniforms.uColorMode.value = params.colorMode === 'height' ? 1.0 : 0.0
+    material.uniforms.uZMin.value = params.heightMin
+    material.uniforms.uZMax.value = params.heightMax
     if (scanFeed.seq === lastSeq.current || !scanFeed.points) return
     lastSeq.current = scanFeed.seq
     const xyzi = scanFeed.points
