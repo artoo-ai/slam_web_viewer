@@ -1,0 +1,68 @@
+.panel {
+  background: var(--bg-panel-header);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-body {
+  padding: 8px 10px;
+}
+
+/* status bar pieces */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.open { background: var(--ok); }
+.status-dot.connecting { background: var(--warn); }
+.status-dot.closed { background: var(--err); }
+
+/* stats panel */
+.stats-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.stats-grid dt { color: var(--text-dim); }
+.stats-grid dd { margin: 0; text-align: right; }
+
+/* log panel */
+.log-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-list li { white-space: nowrap; }
+.log-level-debug { color: var(--text-dim); }
+.log-level-info { color: var(--text); }
+.log-level-warn { color: var(--warn); }
+.log-level-error { color: var(--err); }
