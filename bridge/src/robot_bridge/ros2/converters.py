@@ -46,6 +46,27 @@ def pointcloud2_to_xyzi(msg, *, decimate: int = 1,
     return np.ascontiguousarray(out)
 
 
+def laserscan_to_xyzi(msg, *, default_intensity: float = 0.5) -> np.ndarray:
+    """Convert a sensor_msgs/msg/LaserScan (RPLidar, Neato, …) to float32 (N, 4)
+    [x, y, 0, intensity] in the scan frame. Out-of-range/inf returns dropped."""
+    n = len(msg.ranges)
+    r = np.asarray(msg.ranges, dtype=np.float32)
+    angles = msg.angle_min + np.arange(n, dtype=np.float32) * msg.angle_increment
+    valid = np.isfinite(r) & (r >= msg.range_min) & (r <= msg.range_max)
+    r, angles = r[valid], angles[valid]
+    out = np.empty((len(r), 4), dtype=np.float32)
+    out[:, 0] = r * np.cos(angles)
+    out[:, 1] = r * np.sin(angles)
+    out[:, 2] = 0.0
+    inten = np.asarray(msg.intensities, dtype=np.float32) if len(msg.intensities) == n \
+        else None
+    if inten is not None and inten.size and inten.max() > 0:
+        out[:, 3] = np.clip(inten[valid] / max(1.0, float(inten.max())), 0.0, 1.0)
+    else:
+        out[:, 3] = default_intensity
+    return out
+
+
 def transform_xyzi(xyzi: np.ndarray,
                    translation: tuple[float, float, float],
                    quaternion: tuple[float, float, float, float]) -> np.ndarray:

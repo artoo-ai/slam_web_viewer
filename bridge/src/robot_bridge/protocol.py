@@ -31,12 +31,12 @@ CH_NAV_STATUS = "nav_status"
 CH_NAV_PATH = "nav_path"
 CH_VELOCITY = "velocity"
 CH_IMU = "imu"
+CH_MAP = "map"  # accumulated-map delta: bin float32 [x,y,z,intensity]*N, map frame
 
 GRID_LAYERS = ("map", "costmap_global", "costmap_local")
 
 # Reserved channels (documented in docs/protocol.md, implemented in later slices)
 RESERVED_CHANNELS = (
-    "map",
     "depth",
     "detections",
     "processing",

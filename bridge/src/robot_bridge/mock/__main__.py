@@ -14,6 +14,7 @@ import time
 import numpy as np
 
 from .. import protocol
+from ..mapacc import MapAccumulator
 from ..mjpeg import MjpegServer
 from ..server import BridgeServer, Client
 from .camera import now_frame
@@ -24,7 +25,7 @@ from .world import build_world
 
 log = logging.getLogger("robot_bridge.mock")
 
-CHANNELS = ["scan", "pose", "stats", "log", "status", "occupancy_grid",
+CHANNELS = ["scan", "map", "pose", "stats", "log", "status", "occupancy_grid",
             "nav_status", "nav_path", "velocity", "imu"]
 
 
@@ -45,6 +46,7 @@ class MockBridge:
         self.goal_seq = 0
         self.active_goal: dict | None = None  # {"goal_id": str, "cancelled": bool}
         self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
+        self.mapacc = MapAccumulator(voxel_size=0.10)
 
     # -- distance traveled at "now", at constant --speed
     def distance(self) -> float:
@@ -122,6 +124,9 @@ class MockBridge:
                 self.total_pts += len(xyzi)
                 self.scan_count += 1
                 self.server.broadcast(protocol.CH_SCAN, protocol.pack_scan(xyzi))
+                delta = self.mapacc.add_scan(xyzi)
+                if delta is not None:
+                    self.server.broadcast(protocol.CH_MAP, protocol.pack_scan(delta))
             await asyncio.sleep(max(0.0, period - (time.monotonic() - start)))
 
     async def pose_loop(self):

@@ -33,9 +33,11 @@ import threading
 import time
 
 from .. import protocol
+from ..mapacc import MapAccumulator
 from ..mjpeg import MjpegServer
 from ..server import BridgeServer, Client
 from .converters import (
+    laserscan_to_xyzi,
     occupancygrid_to_grid,
     odometry_to_pose,
     pointcloud2_to_xyzi,
@@ -65,7 +67,8 @@ class Ros2Bridge:
         channels = ["pose", "occupancy_grid", "stats", "log", "nav_status",
                     "nav_path", "velocity", "imu"]
         if args.scan_topic:
-            channels.append("scan")
+            channels += ["scan", "map"]
+        self.mapacc = MapAccumulator(voxel_size=args.map_voxel)
         self.server = BridgeServer(
             server_name="ros2", channels=channels, app_version="0.1.0",
             command_handler=self.on_command)
@@ -117,7 +120,13 @@ class Ros2Bridge:
         self._node = node
         subscribed = []
         if self.args.scan_topic:
-            node.create_subscription(PointCloud2, self.args.scan_topic, self.on_scan, 10)
+            if self.args.scan_msg == "laserscan":
+                from sensor_msgs.msg import LaserScan
+                node.create_subscription(LaserScan, self.args.scan_topic,
+                                         self.on_laserscan, 10)
+            else:
+                node.create_subscription(PointCloud2, self.args.scan_topic,
+                                         self.on_scan, 10)
             subscribed.append(self.args.scan_topic)
         if self.args.odom_topic:
             node.create_subscription(Odometry, self.args.odom_topic, self.on_odom, 50)
@@ -209,7 +218,13 @@ class Ros2Bridge:
     def on_scan(self, msg) -> None:
         xyzi = pointcloud2_to_xyzi(msg, decimate=self.args.decimate,
                                    intensity_scale=self.args.intensity_scale)
-        frame = msg.header.frame_id
+        self._publish_scan(xyzi, msg.header)
+
+    def on_laserscan(self, msg) -> None:
+        self._publish_scan(laserscan_to_xyzi(msg), msg.header)
+
+    def _publish_scan(self, xyzi, header) -> None:
+        frame = header.frame_id
         if frame and frame != "map":
             tq = self._lookup_map_tf(frame)
             if tq is None:
@@ -217,8 +232,11 @@ class Ros2Bridge:
             xyzi = transform_xyzi(xyzi, *tq)
         self.scan_frames += 1
         self.total_pts += len(xyzi)
-        self._post(protocol.CH_SCAN, protocol.pack_scan(xyzi),
-                   stamp_to_seconds(msg.header.stamp))
+        ts = stamp_to_seconds(header.stamp)
+        self._post(protocol.CH_SCAN, protocol.pack_scan(xyzi), ts)
+        delta = self.mapacc.add_scan(xyzi)
+        if delta is not None:
+            self._post(protocol.CH_MAP, protocol.pack_scan(delta), ts)
 
     def _lookup_map_tf(self, frame: str):
         """Latest map<-frame transform as ((x,y,z), (qx,qy,qz,qw)), or None."""
@@ -540,7 +558,12 @@ def main() -> None:
     parser.add_argument("--stack", choices=sorted(STACK_PRESETS), default="3d",
                         help="topic preset: 3d (FAST-LIO2/RTABMap) or 2d (slam_toolbox)")
     parser.add_argument("--scan-topic", default=None,
-                        help="world-frame PointCloud2 ('' disables; default from --stack)")
+                        help="scan topic ('' disables; default from --stack)")
+    parser.add_argument("--scan-msg", choices=["pointcloud2", "laserscan"],
+                        default="pointcloud2",
+                        help="scan message type (laserscan for RPLidar/Neato)")
+    parser.add_argument("--map-voxel", type=float, default=0.10,
+                        help="accumulated-map dedup voxel size, meters")
     parser.add_argument("--odom-topic", default=None,
                         help="nav_msgs/Odometry topic (default from --stack)")
     parser.add_argument("--map-topic", default=None,
