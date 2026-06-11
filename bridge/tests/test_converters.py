@@ -59,6 +59,16 @@ def test_pointcloud2_drops_nonfinite():
     np.testing.assert_array_equal(out, pts[[0, 2]])
 
 
+def test_pointcloud2_intensity_scale():
+    # raw Livox reflectivity 0..255 -> wire 0..1, clipped
+    pts = np.array([[1.0, 2.0, 3.0, 0.0],
+                    [4.0, 5.0, 6.0, 127.5],
+                    [7.0, 8.0, 9.0, 300.0]], dtype=np.float32)
+    out = pointcloud2_to_xyzi(make_cloud(pts), intensity_scale=1.0 / 255.0)
+    np.testing.assert_allclose(out[:, 3], [0.0, 0.5, 1.0], atol=1e-6)
+    np.testing.assert_array_equal(out[:, :3], pts[:, :3])
+
+
 def test_pointcloud2_missing_field():
     cloud = make_cloud(np.zeros((1, 4), dtype=np.float32))
     cloud.fields = cloud.fields[:3]  # drop intensity

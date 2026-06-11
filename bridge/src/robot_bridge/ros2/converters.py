@@ -13,11 +13,14 @@ import numpy as np
 FLOAT32 = 7
 
 
-def pointcloud2_to_xyzi(msg, *, decimate: int = 1) -> np.ndarray:
+def pointcloud2_to_xyzi(msg, *, decimate: int = 1,
+                        intensity_scale: float = 1.0) -> np.ndarray:
     """Convert a sensor_msgs/msg/PointCloud2 to a float32 (N, 4) [x,y,z,intensity] array.
 
     Requires x, y, z, intensity fields, each FLOAT32 (FAST-LIO2's
     /cloud_registered_body satisfies this). `decimate` keeps every k-th point.
+    `intensity_scale` maps raw intensity to the wire's 0..1 range (clipped) —
+    use 1/255 for Livox reflectivity.
     """
     fields = {f.name: f for f in msg.fields}
     for name in ("x", "y", "z", "intensity"):
@@ -38,6 +41,8 @@ def pointcloud2_to_xyzi(msg, *, decimate: int = 1) -> np.ndarray:
         out = out[::decimate]
     # drop non-finite points (FAST-LIO2 occasionally emits NaNs)
     out = out[np.isfinite(out).all(axis=1)]
+    if intensity_scale != 1.0:
+        np.clip(out[:, 3] * intensity_scale, 0.0, 1.0, out=out[:, 3])
     return np.ascontiguousarray(out)
 
 

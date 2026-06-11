@@ -57,7 +57,8 @@ class Ros2Bridge:
             self.loop.call_soon_threadsafe(self.server.broadcast, topic, data, ts)
 
     def on_scan(self, msg) -> None:
-        xyzi = pointcloud2_to_xyzi(msg, decimate=self.args.decimate)
+        xyzi = pointcloud2_to_xyzi(msg, decimate=self.args.decimate,
+                                   intensity_scale=self.args.intensity_scale)
         self._post(protocol.CH_SCAN, protocol.pack_scan(xyzi),
                    stamp_to_seconds(msg.header.stamp))
 
@@ -96,6 +97,8 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=9090)
     parser.add_argument("--decimate", type=int, default=1,
                         help="keep every k-th scan point")
+    parser.add_argument("--intensity-scale", type=float, default=1.0 / 255.0,
+                        help="raw intensity -> 0..1 (default 1/255 for Livox reflectivity)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO,
