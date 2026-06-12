@@ -57,6 +57,20 @@ export const SYNTHETIC_ISSUES: Record<string, Omit<KnownIssue, 're'>> = {
     explain:
       'State is EXPLORING but mapped area has not grown for 2+ minutes while goals keep failing. The robot is cycling pick-frontier → planner-fails → abort. Check the Log tab for the failing stage, the costmap layers for sealed passages, and whether the map looks ghosted/rotated (corrupted by an earlier odometry stall — if so, restart SLAM fresh).',
   },
+  'rotation-smearing': {
+    id: 'rotation-smearing',
+    severity: 'error',
+    title: 'ODOMETRY NOT TRACKING ROTATION',
+    explain:
+      'Commanded spin is not being measured by laser odometry — scans are smearing into the map as ghost walls RIGHT NOW. Stop the rotation if possible; details in the Motion tab (gyro following cmd while odom stays flat = rf2o losing the spin).',
+  },
+  'wz-cap-exceeded': {
+    id: 'wz-cap-exceeded',
+    severity: 'warn',
+    title: 'cmd rotation exceeds 0.6 cap — stale build?',
+    explain:
+      'Something commanded rotation above the 0.6 rad/s cap that should be deployed. A stale build is likely running — check the Config tab. Speeds above the cap are known to smear maps.',
+  },
   'exploration-complete': {
     id: 'exploration-complete',
     severity: 'success',

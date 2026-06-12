@@ -272,13 +272,12 @@
 /* ---- known-issue alert banners ---- */
 .alert-stack {
   position: absolute;
-  top: 30px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 8px;
+  right: 12px;
   display: flex;
   flex-direction: column;
   gap: 5px;
-  align-items: center;
+  align-items: flex-end;
   z-index: 5;
 }
 

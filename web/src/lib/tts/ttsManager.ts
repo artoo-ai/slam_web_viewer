@@ -5,7 +5,6 @@
 
 import { useViewerParams } from '../../stores/viewerParamsStore'
 import { useTelemetryStore } from '../../stores/telemetryStore'
-import { velocityFeed } from '../../stores/velocityFeed'
 import type { StatusPayload } from '../../types/channels'
 
 const COOLDOWN_MS = 5000
@@ -59,12 +58,6 @@ export function bootTts() {
     speak(text, event.event.startsWith('tracking') || event.event.includes('drift'))
   })
 
-  // smear alarm: poll the non-reactive feed, announce on rising edge
-  let wasSmearing = false
-  setInterval(() => {
-    if (velocityFeed.smearing && !wasSmearing) {
-      speak('Warning. Odometry not tracking rotation. Map smear imminent.', true)
-    }
-    wasSmearing = velocityFeed.smearing
-  }, 250)
+  // (the smear alarm is voiced by the alert system — AlertBanners raises
+  // 'rotation-smearing' and alertsStore speaks error-severity alerts)
 }
