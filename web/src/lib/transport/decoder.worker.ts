@@ -22,7 +22,7 @@ self.onmessage = (e: MessageEvent<ArrayBuffer>) => {
   }
   if (typeof frame?.topic !== 'string') return
 
-  if (frame.topic === CH.SCAN || frame.topic === CH.MAP) {
+  if (frame.topic === CH.SCAN || frame.topic === CH.MAP || frame.topic === CH.SCAN_LOW) {
     const view = frame.data as Uint8Array
     if (!(view instanceof Uint8Array) || view.byteLength % 16 !== 0) return
     const points = toAlignedFloat32(view)

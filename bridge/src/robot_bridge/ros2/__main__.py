@@ -54,9 +54,9 @@ log = logging.getLogger("robot_bridge.ros2")
 # camera_init odom frame and rides RTABMap's map->camera_init correction).
 STACK_PRESETS = {
     "3d": {"scan": "/cloud_registered", "odom": "/Odometry", "map": "/map",
-           "odom_frame": "camera_init"},
+           "odom_frame": "camera_init", "scan_low": None},
     "2d": {"scan": "/livox/lidar", "odom": "/odom", "map": "/map",
-           "odom_frame": "odom"},
+           "odom_frame": "odom", "scan_low": "/scan_low"},
 }
 
 # map->odom jump beyond these = SLAM correction: the accumulated 3D map's baked
@@ -91,6 +91,8 @@ class Ros2Bridge:
                     "nav_path", "velocity", "imu", "mission", "node_params"]
         if args.scan_topic:
             channels += ["scan", "map"]
+        if args.scan_low_topic:
+            channels.append("scan_low")
         if args.detections_topic:
             channels.append("objects")
         self.mapacc = MapAccumulator(voxel_size=args.map_voxel)
@@ -214,6 +216,15 @@ class Ros2Bridge:
                                      lambda _msg: self._count_scan2d(),
                                      qos_profile_sensor_data)
             subscribed.append(f"{self.args.scan2d_topic} (watch)")
+        # Low obstacle band (slam_bringup /scan_low, 0.05-0.15 m): the
+        # ankle-height clutter the costmap dodges (dog bowls, shoes).
+        # Rendered as its own GUI layer so "why did it swerve" is visible.
+        if self.args.scan_low_topic:
+            from sensor_msgs.msg import LaserScan as LaserScanLow
+            from rclpy.qos import qos_profile_sensor_data as _qos_low
+            node.create_subscription(LaserScanLow, self.args.scan_low_topic,
+                                     self.on_scan_low, _qos_low)
+            subscribed.append(self.args.scan_low_topic)
         if self.args.rosout:
             from rcl_interfaces.msg import Log as RclLog
             node.create_subscription(RclLog, "/rosout", self.on_rosout, 50)
@@ -304,6 +315,22 @@ class Ros2Bridge:
 
     def on_laserscan(self, msg) -> None:
         self._publish_scan(laserscan_to_xyzi(msg), msg.header)
+
+    def on_scan_low(self, msg) -> None:
+        """Low obstacle band — same xyzi packing as scan, but never fed to
+        map accumulation and silently dropped without TF (no bench mode:
+        a low band in the raw sensor frame would just be confusing)."""
+        xyzi = laserscan_to_xyzi(msg)
+        if len(xyzi) == 0:
+            return
+        frame = msg.header.frame_id
+        if frame and frame != "map":
+            tq = self._lookup_map_tf(frame, msg.header.stamp)
+            if tq is None:
+                return
+            xyzi = transform_xyzi(xyzi, *tq)
+        self._post(protocol.CH_SCAN_LOW, protocol.pack_scan(xyzi),
+                   stamp_to_seconds(msg.header.stamp))
 
     def _publish_scan(self, xyzi, header) -> None:
         frame = header.frame_id
@@ -920,6 +947,9 @@ def main() -> None:
                         help="commanded Twist for the velocity channel ('' disables)")
     parser.add_argument("--mission-topic", default="/explore/status",
                         help="std_msgs/String JSON mission status ('' disables)")
+    parser.add_argument("--scan-low-topic", default=None,
+                        help="sensor_msgs/LaserScan low obstacle band "
+                             "(preset 2d: /scan_low; '' disables)")
     parser.add_argument("--scan2d-topic", default="/scan",
                         help="2D LaserScan to watch (rf2o's input; '' disables)")
     parser.add_argument("--rosout", action="store_true", default=True,
@@ -952,6 +982,8 @@ def main() -> None:
         args.odom_topic = preset["odom"]
     if args.map_topic is None:
         args.map_topic = preset["map"]
+    if args.scan_low_topic is None:
+        args.scan_low_topic = preset.get("scan_low")
 
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")

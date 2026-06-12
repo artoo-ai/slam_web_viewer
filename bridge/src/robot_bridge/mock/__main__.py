@@ -25,7 +25,7 @@ from .world import build_world
 
 log = logging.getLogger("robot_bridge.mock")
 
-CHANNELS = ["scan", "map", "pose", "stats", "log", "status", "occupancy_grid",
+CHANNELS = ["scan", "map", "scan_low", "pose", "stats", "log", "status", "occupancy_grid",
             "nav_status", "nav_path", "velocity", "imu", "objects", "mission",
             "node_params"]
 
@@ -176,6 +176,10 @@ class MockBridge:
                 self.total_pts += len(xyzi)
                 self.scan_count += 1
                 self.server.broadcast(protocol.CH_SCAN, protocol.pack_scan(xyzi))
+                low = self._scan_low(pos)
+                if low is not None:
+                    self.server.broadcast(protocol.CH_SCAN_LOW,
+                                          protocol.pack_scan(low))
                 delta = self.mapacc.add_scan(xyzi)
                 if delta is not None:
                     self.server.broadcast(protocol.CH_MAP, protocol.pack_scan(delta))
@@ -406,6 +410,25 @@ class MockBridge:
             loops += [self.mjpeg.serve_forever(self.args.host, self.args.mjpeg_port),
                       self.camera_loop()]
         await asyncio.gather(*loops)
+
+
+
+    # Synthetic dog bowl: a 14 cm ring of low-band returns at a fixed spot
+    # near the trajectory, visible only within 4 m (mirrors the real
+    # /scan_low marking range). Demoes the GUI's Low Obstacles layer.
+    _BOWL = (1.8, -1.2)
+
+    def _scan_low(self, pos):
+        import numpy as np
+        bx, by = self._BOWL
+        if (pos[0] - bx) ** 2 + (pos[1] - by) ** 2 > 16.0:
+            return None
+        th = np.random.default_rng().uniform(0, 2 * np.pi, 40)
+        x = bx + 0.07 * np.cos(th)
+        y = by + 0.07 * np.sin(th)
+        z = np.full_like(x, 0.08)
+        i = np.full_like(x, 0.6)
+        return np.column_stack([x, y, z, i]).astype(np.float32)
 
 
 def main():

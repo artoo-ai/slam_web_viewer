@@ -38,6 +38,10 @@ def main() -> None:
             protocol.CH_SCAN,
             protocol.pack_scan(np.array(SCAN_POINTS, dtype=np.float32)),
             seq=42, ts=1718000001.5),
+        "scan_low_4pts.bin": protocol.make_frame(
+            protocol.CH_SCAN_LOW,
+            protocol.pack_scan(np.array(SCAN_POINTS, dtype=np.float32)),
+            seq=7, ts=1718000001.6),
         "pose.bin": protocol.make_frame(
             protocol.CH_POSE,
             protocol.pose_payload((1.5, -2.0, 0.3), (0.0, 0.0, 0.7071067811865476, 0.7071067811865476)),
@@ -97,6 +101,10 @@ def main() -> None:
         "scan_4pts.bin": {
             "topic": "scan", "ts": 1718000001.5, "seq": 42,
             "points": SCAN_POINTS,  # data is bin; tests compare decoded float32 values
+        },
+        "scan_low_4pts.bin": {
+            "topic": "scan_low", "ts": 1718000001.6, "seq": 7,
+            "points": SCAN_POINTS,
         },
         "pose.bin": {
             "topic": "pose", "ts": 1718000002.25, "seq": 100,

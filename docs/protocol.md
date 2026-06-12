@@ -51,6 +51,7 @@ Every message is a MessagePack map:
 | `nav_status` | event + ~2 Hz while navigating | map `{ "state": "accepted"\|"navigating"\|"succeeded"\|"aborted"\|"canceled"\|"rejected", "goal_id"?: str, "distance_m"?: float, "eta_s"?: float, "message"?: str }` |
 | `nav_path` | on plan change | map `{ "frame": "map", "poses": bin float32 LE [x, y, theta] × N }` — Nav2 global plan; empty `poses` clears the displayed path |
 | `velocity` | 10 Hz | map `{ "cmd": { "vx": float, "wz": float }, "odom": { "vx": float, "wz": float } }` — commanded vs odometry-measured body velocities (m/s, rad/s). Divergence (cmd spinning, odom not following) is the map-smear precursor. |
+| `scan_low` | ≤10 Hz | **bin** — same packing as `scan` (float32 LE `[x,y,z,intensity] × N`, map frame). The LOW obstacle band (slam_bringup `/scan_low`, 0.05–0.15 m above floor): ankle-height clutter the costmap's low_obstacle_layer dodges (dog bowls, shoes). Never fed to map accumulation; dropped without TF. Droppable channel. |
 | `imu` | 10 Hz (bridge-decimated) | map `{ "angular_vel": [x,y,z] rad/s, "linear_accel": [x,y,z] m/s², "orientation"?: [x,y,z,w] }` — orientation omitted when the IMU doesn't fuse one (Mid-360 built-in doesn't) |
 
 `occupancy_grid` payload:

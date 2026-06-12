@@ -1,6 +1,7 @@
 import { Canvas } from '@react-three/fiber'
 import { Grid, OrbitControls } from '@react-three/drei'
 import { PointCloudViewer } from './PointCloudViewer'
+import { ScanLowLayer } from './ScanLowLayer'
 import { MapPointsLayer } from './MapPointsLayer'
 import { TrajectoryOverlay } from './TrajectoryOverlay'
 import { RobotPoseGlyph } from './RobotPoseGlyph'
@@ -35,6 +36,7 @@ export function ViewportCanvas() {
       />
       <axesHelper args={[1]} />
       <PointCloudViewer />
+      <ScanLowLayer />
       <MapPointsLayer />
       <TrajectoryOverlay />
       <RobotPoseGlyph />

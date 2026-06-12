@@ -35,6 +35,7 @@ CH_MAP = "map"  # accumulated-map delta: bin float32 [x,y,z,intensity]*N, map fr
 CH_OBJECTS = "objects"  # persistent semantic objects with thumbnails
 CH_MISSION = "mission"  # high-level mission/exploration state
 CH_NODE_PARAMS = "node_params"  # deployed-config audit (docs/diagnostics.md §1)
+CH_SCAN_LOW = "scan_low"  # low obstacle band (0.05-0.15 m) laserscan, map frame — same packing as scan
 
 GRID_LAYERS = ("map", "costmap_global", "costmap_local")
 
@@ -49,7 +50,7 @@ RESERVED_CHANNELS = (
 NAV_STATES = ("accepted", "navigating", "succeeded", "aborted", "canceled", "rejected")
 
 # Channels that must be dropped (never queued) on client backpressure
-DROPPABLE_CHANNELS = frozenset({CH_SCAN, "map", "depth"})
+DROPPABLE_CHANNELS = frozenset({CH_SCAN, CH_SCAN_LOW, "map", "depth"})
 
 SCAN_STRIDE_BYTES = 16  # float32 x, y, z, intensity
 

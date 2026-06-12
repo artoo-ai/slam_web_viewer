@@ -54,6 +54,15 @@ describe('golden fixtures (Python -> TS contract)', () => {
     expect(Array.from(points)).toEqual(exp.points!.flat())
   })
 
+  it('decodes scan_low_4pts.bin with the same packing as scan', () => {
+    const frame = decodeFixture('scan_low_4pts.bin')
+    const exp = expected['scan_low_4pts.bin']
+    expect(frame.topic).toBe('scan_low')
+    const view = frame.data as Uint8Array
+    expect(view.byteLength % 16).toBe(0)
+    expect(Array.from(toAlignedFloat32(view))).toEqual(exp.points!.flat())
+  })
+
   it('decodes grid_3x2.bin occupancy grid via RLE', () => {
     const frame = decodeFixture('grid_3x2.bin')
     const exp = expected['grid_3x2.bin'] as unknown as {

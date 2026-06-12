@@ -21,6 +21,7 @@ export const CH = {
   MAP: 'map',
   OBJECTS: 'objects',
   MISSION: 'mission',
+  SCAN_LOW: 'scan_low',
 } as const
 
 export const SCAN_STRIDE_FLOATS = 4 // x, y, z, intensity
