@@ -124,7 +124,9 @@ class BridgeServer:
 
     def __init__(self, *, server_name: str, channels: list[str], app_version: str,
                  command_handler: CommandHandler | None = None,
-                 cameras: list[str] | None = None):
+                 cameras: list[str] | None = None,
+                 on_connect: Callable[["Client"], Awaitable[None]] | None = None):
+        self.on_connect = on_connect
         self.server_name = server_name
         self.channels = channels
         self.app_version = app_version
@@ -179,6 +181,8 @@ class BridgeServer:
                 protocol.hello_payload(self.server_name, self.channels,
                                        self.app_version, self.cameras),
                 self.next_seq(protocol.CH_HELLO)))
+            if self.on_connect is not None:
+                await self.on_connect(client)
             async for raw in ws:
                 if not isinstance(raw, bytes):
                     continue

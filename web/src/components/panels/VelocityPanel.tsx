@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
-import { velocityFeed } from '../../stores/velocityFeed'
+import { velocityFeed, WZ_CAP } from '../../stores/velocityFeed'
 import { PanelShell } from './PanelShell'
 
 /** Rotation tracking: commanded wz vs odometry-measured wz over a 30 s window.
@@ -15,6 +15,7 @@ export function VelocityPanel() {
   const plot = useRef<uPlot | null>(null)
   const lastVersion = useRef(-1)
   const [smearing, setSmearing] = useState(false)
+  const [capHit, setCapHit] = useState(false)
   const [wz, setWz] = useState<{ cmd: number; odom: number } | null>(null)
 
   useEffect(() => {
@@ -42,9 +43,11 @@ export function VelocityPanel() {
           {},
           { stroke: '#38bdf8', width: 1.5, label: 'cmd wz' },
           { stroke: '#f59e0b', width: 1.5, label: 'odom wz' },
+          { stroke: '#7d8a9c', width: 1, dash: [4, 4], label: 'cap' },
+          { stroke: '#7d8a9c', width: 1, dash: [4, 4], label: '-cap' },
         ],
       },
-      [[], [], []],
+      [[], [], [], [], []],
       plotEl.current,
     )
     plot.current = u
@@ -54,8 +57,10 @@ export function VelocityPanel() {
       lastVersion.current = velocityFeed.version
       const [t, cmdWz, odomWz] = velocityFeed.series
       const t0 = t.length ? t[t.length - 1] : 0
-      u.setData([t.map((x) => x - t0), cmdWz, odomWz])
+      u.setData([t.map((x) => x - t0), cmdWz, odomWz,
+                 t.map(() => WZ_CAP), t.map(() => -WZ_CAP)])
       setSmearing(velocityFeed.smearing)
+      setCapHit(velocityFeed.capExceeded)
       const latest = velocityFeed.latest
       setWz(latest ? { cmd: latest.cmd.wz, odom: latest.odom.wz } : null)
     }, 150)
@@ -72,6 +77,12 @@ export function VelocityPanel() {
       {smearing && (
         <div className="smear-alarm">
           ⚠ ODOMETRY NOT TRACKING ROTATION — map smear imminent
+        </div>
+      )}
+      {capHit && !smearing && (
+        <div className="smear-alarm"
+             title="Something commanded rotation above the 0.6 rad/s cap that should be deployed — a stale build is likely running. Check the Config tab.">
+          ⚠ cmd wz exceeds 0.6 cap — stale build?
         </div>
       )}
       <div className="velocity-readout">

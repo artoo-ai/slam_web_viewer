@@ -3,6 +3,7 @@ import { HeaderBar } from '../components/chrome/HeaderBar'
 import { Sidebar } from '../components/chrome/Sidebar'
 import { MetricsCard } from '../components/chrome/MetricsCard'
 import { BboxReadout, CameraInset, IntensityLegend } from '../components/chrome/Overlays'
+import { StalenessStrip } from '../components/chrome/StalenessStrip'
 import './layout.css'
 
 /** SJY HandHeldSLAM-style chrome: header bar, left sidebar, viewport filling
@@ -14,6 +15,7 @@ export function Layout() {
       <Sidebar />
       <main className="layout-viewport">
         <ViewportCanvas />
+        <StalenessStrip />
         <MetricsCard />
         <IntensityLegend />
         <CameraInset />

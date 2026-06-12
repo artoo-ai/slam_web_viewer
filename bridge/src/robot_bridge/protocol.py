@@ -34,6 +34,7 @@ CH_IMU = "imu"
 CH_MAP = "map"  # accumulated-map delta: bin float32 [x,y,z,intensity]*N, map frame
 CH_OBJECTS = "objects"  # persistent semantic objects with thumbnails
 CH_MISSION = "mission"  # high-level mission/exploration state
+CH_NODE_PARAMS = "node_params"  # deployed-config audit (docs/diagnostics.md §1)
 
 GRID_LAYERS = ("map", "costmap_global", "costmap_local")
 
@@ -223,6 +224,17 @@ def velocity_payload(*, cmd_vx: float, cmd_wz: float,
                      odom_vx: float, odom_wz: float) -> dict:
     return {"cmd": {"vx": cmd_vx, "wz": cmd_wz},
             "odom": {"vx": odom_vx, "wz": odom_wz}}
+
+
+def node_params_payload(nodes: dict, complete: bool, stamp: float | None = None) -> dict:
+    """Deployed-config audit snapshot: {node: {param: value} | None}.
+
+    A node that didn't respond is None (UI renders UNKNOWN, never OK) and
+    flips `complete` to False.
+    """
+    import time as _time
+    return {"stamp": _time.time() if stamp is None else stamp,
+            "complete": complete, "nodes": nodes}
 
 
 def mission_payload(state: str, fields: dict | None = None) -> dict:

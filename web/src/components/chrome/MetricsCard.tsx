@@ -3,6 +3,7 @@ import { useTelemetryStore } from '../../stores/telemetryStore'
 import { useNavStore } from '../../stores/navStore'
 import { useObjectsStore } from '../../stores/objectsStore'
 import { useMissionStore } from '../../stores/missionStore'
+import { useParamsAudit } from '../../stores/paramsAuditStore'
 import { velocityFeed } from '../../stores/velocityFeed'
 import { imuFeed } from '../../stores/imuFeed'
 import { poseFeed } from '../../stores/poseFeed'
@@ -15,10 +16,12 @@ import './chrome.css'
 /** SJY-style floating bottom-center metrics card with tabs.
  *  Status tab: four big counters + velocity + nav state. */
 
-type Tab = 'Status' | 'Rotation' | 'IMU' | 'Objects' | 'Log'
+type Tab = 'Status' | 'Rotation' | 'IMU' | 'Objects' | 'Config' | 'Log'
 
 const TAB_TIPS: Record<Tab, string> = {
   Status: 'Session counters and navigation state at a glance.',
+  Config:
+    'Deployed-config audit: the live parameter values the robot is ACTUALLY running vs what they should be. Red row = stale build/deploy — rebuild before trusting any test result.',
   Rotation:
     'Commanded spin (blue) vs what odometry measured (amber). When blue spikes and amber stays flat, laser odometry is losing the rotation — scans smear into the map as ghost walls. The red alarm fires on exactly that.',
   IMU: 'Gyro rates (the IMU DOES see rotations laser odometry misses) and accelerometer — spikes = impacts/vibration.',
@@ -81,6 +84,41 @@ function useLiveReadouts() {
   return live
 }
 
+function fmtVal(v: unknown): string {
+  if (v === undefined || v === null) return '—'
+  if (Array.isArray(v)) return `[${v.join(', ')}]`
+  if (v === '') return '""'
+  return String(v)
+}
+
+function ConfigAudit() {
+  const { rows, mismatches, unknowns, stamp, refresh } = useParamsAudit()
+  return (
+    <div className="cfg-audit">
+      <div className="cfg-head">
+        <span className={mismatches ? 'cfg-bad' : unknowns ? 'cfg-warn' : 'cfg-ok'}>
+          {mismatches ? `DEPLOYED ≠ EXPECTED (${mismatches})` :
+           unknowns ? `${unknowns} unknown` :
+           rows.length ? 'deployed config matches expected' : 'no audit data yet'}
+        </span>
+        <button className="mc-cancel" onClick={refresh}>refresh</button>
+      </div>
+      <div className="cfg-rows">
+        {rows.map((r) => (
+          <div key={`${r.node}/${r.param}`} className={`cfg-row cfg-row-${r.status}`} title={r.tip}>
+            <span className="cfg-param">{r.param}<em>{r.node}</em></span>
+            <span className="cfg-val">{fmtVal(r.deployed)}</span>
+            <span className="cfg-exp">{r.expect === null ? 'per-run' : fmtVal(r.expect)}</span>
+          </div>
+        ))}
+      </div>
+      {stamp !== null && (
+        <div className="cfg-stamp">read {new Date(stamp * 1000).toLocaleTimeString()}</div>
+      )}
+    </div>
+  )
+}
+
 export function MetricsCard() {
   const [tab, setTab] = useState<Tab>('Status')
   const stats = useTelemetryStore((s) => s.stats)
@@ -94,7 +132,7 @@ export function MetricsCard() {
   return (
     <div className="metrics-card">
       <div className="mc-tabs">
-        {(['Status', 'Rotation', 'IMU', 'Objects', 'Log'] as Tab[]).map((t) => (
+        {(['Status', 'Rotation', 'IMU', 'Objects', 'Config', 'Log'] as Tab[]).map((t) => (
           <button key={t} className={`mc-tab ${tab === t ? 'mc-tab-active' : ''}`}
                   title={TAB_TIPS[t]} onClick={() => setTab(t)}>
             {t}
@@ -215,6 +253,7 @@ export function MetricsCard() {
           ))}
         </div>
       )}
+      {tab === 'Config' && <ConfigAudit />}
       {tab === 'Log' && <LogPanel />}
     </div>
   )

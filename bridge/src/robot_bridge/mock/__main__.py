@@ -26,7 +26,23 @@ from .world import build_world
 log = logging.getLogger("robot_bridge.mock")
 
 CHANNELS = ["scan", "map", "pose", "stats", "log", "status", "occupancy_grid",
-            "nav_status", "nav_path", "velocity", "imu", "objects", "mission"]
+            "nav_status", "nav_path", "velocity", "imu", "objects", "mission",
+            "node_params"]
+
+# deployed-config audit demo values: max_vel_theta is INTENTIONALLY stale
+# (1.5 vs expected 0.6) so the CONFIG ✗ badge and red row are demoable offline
+MOCK_NODE_PARAMS = {
+    "controller_server": {"FollowPath.max_vel_theta": 1.5,
+                          "FollowPath.min_theta_velocity_threshold": 0.05},
+    "behavior_server": {"max_rotational_vel": 0.6, "min_rotational_vel": 0.4},
+    "velocity_smoother": {"max_velocity": [0.5, 0.3, 0.6]},
+    "local_costmap/local_costmap": {"robot_radius": 0.25,
+                                    "inflation_layer.inflation_radius": 0.30},
+    "global_costmap/global_costmap": {"robot_radius": 0.25,
+                                      "inflation_layer.inflation_radius": 0.30},
+    "livox_to_scan": {"min_height": 0.15, "max_height": 0.45},
+    "slam_toolbox": {"mode": "mapping", "map_file_name": ""},
+}
 
 # fake semantic objects scattered in the world: revealed when the robot passes
 # within range, like the Roborock object-on-map feature
@@ -44,7 +60,8 @@ class MockBridge:
         self.server = BridgeServer(
             server_name="mock", channels=CHANNELS, app_version="0.1.0",
             command_handler=self.on_command,
-            cameras=["rgb", "depth"] if args.mjpeg_port else [])
+            cameras=["rgb", "depth"] if args.mjpeg_port else [],
+            on_connect=self.on_client_connect)
         planes, boxes, cylinders = build_world()
         self.synth = ScanSynthesizer(planes, boxes, cylinders,
                                      np.random.default_rng(args.seed))
@@ -63,8 +80,18 @@ class MockBridge:
     def distance(self) -> float:
         return (time.time() - self.t0) * self.args.speed
 
+    async def on_client_connect(self, client: Client) -> None:
+        self.server.broadcast(protocol.CH_NODE_PARAMS,
+                              protocol.node_params_payload(MOCK_NODE_PARAMS, True))
+
     async def on_command(self, cmd: dict, client: Client) -> None:
         match cmd.get("cmd"):
+            case "get_params":
+                await self.server.reply_ack(client, {
+                    "cmd": "params_ack", "id": cmd.get("id", 0), "ok": True})
+                self.server.broadcast(
+                    protocol.CH_NODE_PARAMS,
+                    protocol.node_params_payload(MOCK_NODE_PARAMS, True))
             case "ping":
                 await self.server.reply_ack(
                     client, protocol.pong_payload(cmd.get("id", 0), cmd.get("t", 0.0)))

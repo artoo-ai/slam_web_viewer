@@ -72,6 +72,12 @@ export interface MapSaveCommand {
   path?: string
 }
 
+export interface GetParamsCommand {
+  cmd: 'get_params'
+  id: number
+  node?: string
+}
+
 export type Command =
   | PingCommand
   | SetParamCommand
@@ -80,6 +86,7 @@ export type Command =
   | RecStartCommand
   | RecStopCommand
   | MapSaveCommand
+  | GetParamsCommand
 
 /** Omit that distributes over unions (plain Omit collapses Command to common keys). */
 export type DistributiveOmit<T, K extends keyof never> = T extends unknown

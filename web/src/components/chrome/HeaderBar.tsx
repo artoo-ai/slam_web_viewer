@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { useTelemetryStore } from '../../stores/telemetryStore'
 import { useRecStore } from '../../stores/recStore'
+import { useParamsAudit } from '../../stores/paramsAuditStore'
 import { connection } from '../../lib/transport/connection'
 import { fpsMeter } from '../../lib/viewportRefs'
 import { mapFeed } from '../../stores/mapFeed'
@@ -25,6 +26,9 @@ export function HeaderBar() {
   const hello = useConnectionStore((s) => s.hello)
   const health = useTelemetryStore((s) => s.stats?.health)
   const recording = useRecStore((s) => s.recording)
+  const cfgMismatches = useParamsAudit((s) => s.mismatches)
+  const cfgUnknowns = useParamsAudit((s) => s.unknowns)
+  const cfgRows = useParamsAudit((s) => s.rows.length)
   const [scene, setScene] = useState({ pts: 0, fps: 0 })
 
   useEffect(() => {
@@ -51,6 +55,13 @@ export function HeaderBar() {
       </span>
       <span className="hdr-stat">{status === 'open' && latencyMs !== null ? `${latencyMs} ms` : '—'}</span>
       <span className="hdr-stat">{drops} drop</span>
+      {cfgRows > 0 && (
+        <span
+          className={`hdr-quality hdr-quality-${cfgMismatches ? 'poor' : cfgUnknowns ? 'fair' : 'good'}`}
+          title="Deployed-config audit (Config tab): live parameter values on the robot vs the expected manifest. Red = stale build — what burned three debugging sessions.">
+          {cfgMismatches ? `CONFIG ✗ ${cfgMismatches}` : cfgUnknowns ? 'CONFIG ?' : 'CONFIG ✓'}
+        </span>
+      )}
       <span className={`hdr-quality hdr-quality-${quality.cls}`}
             title="Single-glance SLAM health score from the backend (0–1). The one number to watch during a run.">
         {quality.label}

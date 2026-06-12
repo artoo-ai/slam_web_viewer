@@ -15,6 +15,11 @@ const SPIN_THRESHOLD = 0.3 // rad/s commanded
 const FOLLOW_RATIO = 0.3
 const SUSTAIN_S = 0.5
 
+/** The rotation cap deployed in nav2_params — commanded wz above this means a
+ *  stale build is running (the cap exists because >0.6 rad/s smears maps). */
+export const WZ_CAP = 0.6
+let capExceeded = false
+
 // parallel ring buffers (uPlot consumes plain arrays per series)
 const t: number[] = []
 const cmdWz: number[] = []
@@ -41,6 +46,7 @@ export const velocityFeed = {
       odomVx.shift()
     }
 
+    capExceeded = Math.abs(payload.cmd.wz) > WZ_CAP + 0.05
     const mismatch =
       Math.abs(payload.cmd.wz) > SPIN_THRESHOLD &&
       Math.abs(payload.odom.wz) < FOLLOW_RATIO * Math.abs(payload.cmd.wz)
@@ -62,6 +68,10 @@ export const velocityFeed = {
   /** true while commanded rotation is not being tracked by odometry */
   get smearing() {
     return smearing
+  },
+  /** true while |cmd wz| exceeds the deployed 0.6 rad/s cap — stale build */
+  get capExceeded() {
+    return capExceeded
   },
   get latest(): VelocityPayload | null {
     const i = t.length - 1

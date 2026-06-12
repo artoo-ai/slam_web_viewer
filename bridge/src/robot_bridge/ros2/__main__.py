@@ -65,7 +65,7 @@ class Ros2Bridge:
     def __init__(self, args: argparse.Namespace):
         self.args = args
         channels = ["pose", "occupancy_grid", "stats", "log", "nav_status",
-                    "nav_path", "velocity", "imu", "mission"]
+                    "nav_path", "velocity", "imu", "mission", "node_params"]
         if args.scan_topic:
             channels += ["scan", "map"]
         if args.detections_topic:
@@ -85,7 +85,8 @@ class Ros2Bridge:
         self.server = BridgeServer(
             server_name=args.name, channels=channels, app_version="0.1.0",
             command_handler=self.on_command,
-            cameras=list(self.cameras) if args.mjpeg_port else [])
+            cameras=list(self.cameras) if args.mjpeg_port else [],
+            on_connect=self.on_client_connect)
         self.loop: asyncio.AbstractEventLoop | None = None
 
         # live stats (written by ROS thread, read by asyncio stats loop — plain
@@ -604,6 +605,72 @@ class Ros2Bridge:
             handle.cancel_goal_async()  # result callback broadcasts "canceled"
         self._reply_threadsafe(client, protocol.cancel_ack_payload(cmd_id, ok))
 
+    # -- deployed-config audit (docs/diagnostics.md §1) -----------------------
+
+    async def on_client_connect(self, client: Client) -> None:
+        self._ros_jobs.put(self._ros_get_params)
+
+    def _ros_get_params(self) -> None:
+        """Read the audited params from each node's get_parameters service.
+
+        Non-blocking: nodes whose service isn't ready right now report None
+        (UNKNOWN in the UI — a down node is itself a finding). A 2 s deadline
+        timer emits whatever has arrived.
+        """
+        from rcl_interfaces.srv import GetParameters
+        from .audit_params import AUDITED_PARAMS
+
+        results: dict = {name: None for name in AUDITED_PARAMS}
+        state = {"pending": 0, "done": False}
+
+        def pv_to_py(pv):
+            t = pv.type
+            return [None, pv.bool_value, pv.integer_value, pv.double_value,
+                    pv.string_value, list(pv.byte_array_value),
+                    list(pv.bool_array_value), list(pv.integer_array_value),
+                    list(pv.double_array_value), list(pv.string_array_value)][t] \
+                if 0 <= t <= 9 else None
+
+        def emit():
+            if state["done"]:
+                return
+            state["done"] = True
+            complete = all(v is not None for v in results.values())
+            self._post(protocol.CH_NODE_PARAMS,
+                       protocol.node_params_payload(results, complete))
+
+        for node_name, names in AUDITED_PARAMS.items():
+            cli = self._node.create_client(GetParameters,
+                                           f"/{node_name}/get_parameters")
+            if not cli.service_is_ready():
+                self._node.destroy_client(cli)
+                continue
+            state["pending"] += 1
+
+            def done(future, node_name=node_name, names=names, cli=cli):
+                try:
+                    values = future.result().values
+                    results[node_name] = {n: pv_to_py(v) for n, v in zip(names, values)}
+                except Exception:  # noqa: BLE001
+                    pass
+                self._node.destroy_client(cli)
+                state["pending"] -= 1
+                if state["pending"] == 0:
+                    emit()
+
+            cli.call_async(GetParameters.Request(names=names)).add_done_callback(done)
+
+        if state["pending"] == 0:
+            emit()  # nothing reachable — all-unknown frame, still informative
+        else:
+            timer_holder = {}
+
+            def deadline():
+                timer_holder["t"].cancel()
+                emit()
+
+            timer_holder["t"] = self._node.create_timer(2.0, deadline)
+
     # -- command side (asyncio) ----------------------------------------------
 
     async def on_command(self, cmd: dict, client: Client) -> None:
@@ -628,6 +695,10 @@ class Ros2Bridge:
                 goal_id = cmd.get("goal_id")
                 self._ros_jobs.put(
                     lambda: self._ros_cancel_goal(cmd_id, client, goal_id))
+            case "get_params":
+                await self.server.reply_ack(client, {
+                    "cmd": "params_ack", "id": cmd.get("id", 0), "ok": True})
+                self._ros_jobs.put(self._ros_get_params)
             case "map_save":
                 try:
                     info = self.mapacc.save_qpc(

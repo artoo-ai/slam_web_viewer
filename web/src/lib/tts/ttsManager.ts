@@ -33,6 +33,11 @@ function speak(text: string, warning = false) {
   window.speechSynthesis.speak(utterance)
 }
 
+/** Public hook for other modules (config audit etc.) to voice a warning. */
+export function speakAlert(text: string) {
+  speak(text, true)
+}
+
 let booted = false
 
 /** Idempotent: subscribes to status events and watches the smear alarm. */

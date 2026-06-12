@@ -243,6 +243,72 @@
 .metrics-card .panel { border: none; border-radius: 0; background: transparent; }
 .metrics-card .panel-header { display: none; }
 
+/* ---- staleness strip ---- */
+.stale-strip {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.stale-cell {
+  padding: 2px 8px;
+  border-radius: 9px;
+  background: rgba(19, 24, 32, 0.85);
+  border: 1px solid var(--border);
+}
+
+.stale-cell em { font-style: normal; font-weight: 700; }
+.stale-ok { color: var(--ok); }
+.stale-warn { color: var(--warn); }
+.stale-bad { color: var(--err); animation: smear-pulse 1s infinite; }
+.stale-none { color: var(--text-dim); }
+
+/* ---- config audit ---- */
+.cfg-audit { padding: 8px 10px; }
+
+.cfg-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cfg-ok { color: var(--ok); }
+.cfg-warn { color: var(--warn); }
+.cfg-bad { color: var(--err); animation: smear-pulse 1.2s infinite; }
+
+.cfg-rows { max-height: 190px; overflow-y: auto; }
+
+.cfg-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px;
+  gap: 8px;
+  padding: 2px 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  border-radius: 3px;
+}
+
+.cfg-param em { display: block; font-style: normal; font-size: 8px; color: var(--text-dim); }
+.cfg-val { text-align: right; }
+.cfg-exp { text-align: right; color: var(--text-dim); }
+
+.cfg-row-ok .cfg-val { color: var(--ok); }
+.cfg-row-mismatch { background: rgba(248, 113, 113, 0.12); }
+.cfg-row-mismatch .cfg-val { color: var(--err); font-weight: 700; }
+.cfg-row-unknown .cfg-val { color: var(--warn); }
+.cfg-row-info .cfg-val { color: var(--text); }
+
+.cfg-stamp { margin-top: 4px; font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+
 /* ---- viewport overlays ---- */
 .legend {
   position: absolute;

@@ -18,6 +18,8 @@ import { imuFeed } from '../../stores/imuFeed'
 import { mapFeed } from '../../stores/mapFeed'
 import { useObjectsStore } from '../../stores/objectsStore'
 import { useMissionStore, type MissionPayload } from '../../stores/missionStore'
+import { useParamsAudit } from '../../stores/paramsAuditStore'
+import { stalenessFeed } from '../../stores/stalenessFeed'
 import type {
   CmdAckPayload,
   DecodedFrame,
@@ -35,6 +37,7 @@ import type {
 
 type Listener = (frame: DecodedFrame) => void
 type ObjectsSetter = ReturnType<typeof useObjectsStore.getState>['setObjects']
+type ParamsApplier = ReturnType<typeof useParamsAudit.getState>['apply']
 
 // navStore registers here at import time (it imports this module, so this
 // module cannot import it back without a cycle)
@@ -110,6 +113,12 @@ class Connection {
 
   private onFrame(frame: DecodedFrame) {
     this.trackSeq(frame)
+    if (frame.topic === CH.OCCUPANCY_GRID) {
+      const layer = (frame.data as OccupancyGridPayload).layer ?? 'map'
+      stalenessFeed.record(`occupancy_grid:${layer}`)
+    } else {
+      stalenessFeed.record(frame.topic)
+    }
     switch (frame.topic) {
       case CH.SCAN:
         if (frame.points) scanFeed.push(frame.points, frame.seq, frame.ts)
@@ -124,6 +133,9 @@ class Connection {
       }
       case CH.MISSION:
         useMissionStore.getState().setMission(frame.ts, frame.data as MissionPayload)
+        break
+      case 'node_params':
+        useParamsAudit.getState().apply(frame.data as Parameters<ParamsApplier>[0])
         break
       case CH.POSE:
         poseFeed.push(frame.data as PosePayload)
