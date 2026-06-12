@@ -65,7 +65,7 @@ class Ros2Bridge:
     def __init__(self, args: argparse.Namespace):
         self.args = args
         channels = ["pose", "occupancy_grid", "stats", "log", "nav_status",
-                    "nav_path", "velocity", "imu"]
+                    "nav_path", "velocity", "imu", "mission"]
         if args.scan_topic:
             channels += ["scan", "map"]
         if args.detections_topic:
@@ -174,6 +174,11 @@ class Ros2Bridge:
             node.create_subscription(Twist, self.args.cmd_vel_topic,
                                      self.on_cmd_vel, 10)
             subscribed.append(self.args.cmd_vel_topic)
+        if self.args.mission_topic:
+            from std_msgs.msg import String
+            node.create_subscription(String, self.args.mission_topic,
+                                     self.on_mission, 10)
+            subscribed.append(self.args.mission_topic)
         if self.args.detections_topic:
             try:
                 from vision_msgs.msg import Detection3DArray
@@ -291,6 +296,27 @@ class Ros2Bridge:
     def on_cmd_vel(self, msg) -> None:
         self.cmd_vel = (float(msg.linear.x), float(msg.angular.z))
         self.cmd_vel_t = time.monotonic()
+
+    def on_mission(self, msg) -> None:
+        """slam_bringup's /explore/status: std_msgs/String carrying JSON like
+        {"state": "EXPLORING", "frontier_count": 721, ...} -> mission channel."""
+        import json
+        try:
+            data = json.loads(msg.data)
+        except (ValueError, TypeError):
+            return
+        if not isinstance(data, dict):
+            return
+        state = str(data.pop("state", "?"))
+        # flatten one level (home_pose: {x, y} -> home_x / home_y)
+        fields: dict = {}
+        for k, v in data.items():
+            if isinstance(v, dict):
+                for k2, v2 in v.items():
+                    fields[f"{k}_{k2}"] = v2
+            else:
+                fields[k] = v
+        self._post(protocol.CH_MISSION, protocol.mission_payload(state, fields))
 
     def on_detections(self, msg) -> None:
         """vision_msgs/Detection3DArray -> persistent object memory.
@@ -668,6 +694,8 @@ def main() -> None:
                         help="Nav2 global plan nav_msgs/Path ('' disables)")
     parser.add_argument("--cmd-vel-topic", default="/cmd_vel",
                         help="commanded Twist for the velocity channel ('' disables)")
+    parser.add_argument("--mission-topic", default="/explore/status",
+                        help="std_msgs/String JSON mission status ('' disables)")
     parser.add_argument("--detections-topic", default="",
                         help="vision_msgs/Detection3DArray for object mapping ('' disables)")
     parser.add_argument("--imu-topic", default="/livox/imu",

@@ -13,6 +13,10 @@ let trajCount = 0
 let latest: PosePayload | null = null
 let version = 0
 
+// pose-rate estimate over a sliding 2 s window (localization health signal)
+const arrivals: number[] = []
+let hz = 0
+
 function appendTrajectory(x: number, y: number, z: number) {
   if (trajCount > 0) {
     const i = (trajCount - 1) * 3
@@ -37,7 +41,14 @@ export const poseFeed = {
   push(pose: PosePayload) {
     latest = pose
     appendTrajectory(pose.p[0], pose.p[1], pose.p[2])
+    const now = performance.now()
+    arrivals.push(now)
+    while (arrivals.length > 0 && arrivals[0] < now - 2000) arrivals.shift()
+    hz = arrivals.length / 2
     version++
+  },
+  get hz() {
+    return hz
   },
   get latest() {
     return latest

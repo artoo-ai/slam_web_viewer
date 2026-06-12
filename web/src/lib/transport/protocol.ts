@@ -20,6 +20,7 @@ export const CH = {
   IMU: 'imu',
   MAP: 'map',
   OBJECTS: 'objects',
+  MISSION: 'mission',
 } as const
 
 export const SCAN_STRIDE_FLOATS = 4 // x, y, z, intensity

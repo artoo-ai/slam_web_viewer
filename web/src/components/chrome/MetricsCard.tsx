@@ -1,7 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTelemetryStore } from '../../stores/telemetryStore'
 import { useNavStore } from '../../stores/navStore'
 import { useObjectsStore } from '../../stores/objectsStore'
+import { useMissionStore } from '../../stores/missionStore'
+import { velocityFeed } from '../../stores/velocityFeed'
+import { imuFeed } from '../../stores/imuFeed'
+import { poseFeed } from '../../stores/poseFeed'
 import { viewportRefs } from '../../lib/viewportRefs'
 import { VelocityPanel } from '../panels/VelocityPanel'
 import { ImuPanel } from '../panels/ImuPanel'
@@ -37,6 +41,46 @@ function fmtDur(s: number): string {
   return s >= 60 ? `${(s / 60).toFixed(1)} m` : `${s.toFixed(0)} s`
 }
 
+const MISSION_COLORS: Record<string, string> = {
+  EXPLORING: 'var(--accent)',
+  RETURNING: 'var(--warn)',
+  DONE: 'var(--ok)',
+  IDLE: 'var(--text-dim)',
+}
+
+function fmtField(key: string, v: number | string): string {
+  if (typeof v !== 'number') return String(v)
+  if (key.endsWith('_s')) {
+    const m = Math.floor(v / 60)
+    return `${m}:${String(Math.round(v % 60)).padStart(2, '0')}`
+  }
+  return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(2)
+}
+
+/** Live sensor readouts polled from the non-reactive feeds at 4 Hz. */
+function useLiveReadouts() {
+  const [live, setLive] = useState({
+    vx: 0, wz: 0, accel: null as [number, number, number] | null,
+    gyroZ: 0, poseHz: 0, smearing: false,
+  })
+  useEffect(() => {
+    const t = setInterval(() => {
+      const v = velocityFeed.latest
+      const imu = imuFeed.latest
+      setLive({
+        vx: v?.odom.vx ?? 0,
+        wz: v?.odom.wz ?? 0,
+        accel: imu?.linear_accel ?? null,
+        gyroZ: imu?.angular_vel[2] ?? 0,
+        poseHz: poseFeed.hz,
+        smearing: velocityFeed.smearing,
+      })
+    }, 250)
+    return () => clearInterval(t)
+  }, [])
+  return live
+}
+
 export function MetricsCard() {
   const [tab, setTab] = useState<Tab>('Status')
   const stats = useTelemetryStore((s) => s.stats)
@@ -44,6 +88,8 @@ export function MetricsCard() {
   const goal = useNavStore((s) => s.goal)
   const cancelGoal = useNavStore((s) => s.cancelGoal)
   const objects = useObjectsStore((s) => s.objects)
+  const mission = useMissionStore((s) => s.mission)
+  const live = useLiveReadouts()
 
   return (
     <div className="metrics-card">
@@ -78,8 +124,54 @@ export function MetricsCard() {
               <span className="mc-label">DURATION</span>
             </div>
           </div>
+          <div className="mc-grid">
+            <div className="mc-block"
+                 title="Body velocities as ODOMETRY measures them. The km/h figure mirrors the SJY readout; angular is in deg/s.">
+              <div className="mc-block-title">Velocity</div>
+              <div className="mc-kv"><span>linear</span>
+                <span>{live.vx.toFixed(2)} m/s ({(live.vx * 3.6).toFixed(1)} km/h)</span></div>
+              <div className="mc-kv"><span>angular</span>
+                <span>{((live.wz * 180) / Math.PI).toFixed(1)} °/s</span></div>
+            </div>
+            <div className="mc-block"
+                 title={`Exploration node state (${mission ? 'live from /explore/status' : 'no mission data yet'}). Frontiers = unexplored boundary cells the robot can still drive to; exploration ends when none remain reachable.`}>
+              <div className="mc-block-title">Exploration</div>
+              {mission ? (
+                <>
+                  <div className="mc-state" style={{ color: MISSION_COLORS[mission.state] ?? 'var(--text)' }}>
+                    {mission.state}
+                  </div>
+                  {Object.entries(mission.fields).slice(0, 4).map(([k, v]) => (
+                    <div className="mc-kv" key={k}>
+                      <span>{k.replace(/_/g, ' ')}</span>
+                      <span>{fmtField(k, v)}</span>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className="mc-kv"><span>—</span><span>waiting</span></div>
+              )}
+            </div>
+            <div className="mc-block"
+                 title="IMU at a glance: accel z should sit near 9.8 (gravity); spikes = impacts. gyro z is rotation rate — compare with the Rotation tab when spinning.">
+              <div className="mc-block-title">IMU</div>
+              <div className="mc-kv"><span>accel</span>
+                <span>{live.accel ? live.accel.map((a) => a.toFixed(1)).join(' / ') : '—'}</span></div>
+              <div className="mc-kv"><span>gyro z</span>
+                <span>{live.gyroZ.toFixed(2)} rad/s</span></div>
+            </div>
+            <div className="mc-block"
+                 title="Localization health: pose rate (rf2o ~10-20 Hz; 0 = no odometry), and whether commanded rotation is being tracked (SMEARING = laser odometry losing the spin -> ghost walls).">
+              <div className="mc-block-title">Localization</div>
+              <div className="mc-kv"><span>pose rate</span><span>{live.poseHz.toFixed(1)} Hz</span></div>
+              <div className="mc-kv"><span>rotation</span>
+                <span style={{ color: live.smearing ? 'var(--err)' : 'var(--ok)' }}>
+                  {live.smearing ? 'SMEARING' : 'tracking'}
+                </span></div>
+              <div className="mc-kv"><span>scan</span><span>{stats ? stats.scan_hz.toFixed(1) : '—'} Hz</span></div>
+            </div>
+          </div>
           <div className="mc-rows">
-            <span>scan {stats ? stats.scan_hz.toFixed(1) : '—'} Hz</span>
             <span>
               nav:{' '}
               {navStatus ? (

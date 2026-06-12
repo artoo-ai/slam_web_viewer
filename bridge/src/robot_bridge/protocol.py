@@ -33,6 +33,7 @@ CH_VELOCITY = "velocity"
 CH_IMU = "imu"
 CH_MAP = "map"  # accumulated-map delta: bin float32 [x,y,z,intensity]*N, map frame
 CH_OBJECTS = "objects"  # persistent semantic objects with thumbnails
+CH_MISSION = "mission"  # high-level mission/exploration state
 
 GRID_LAYERS = ("map", "costmap_global", "costmap_local")
 
@@ -222,6 +223,16 @@ def velocity_payload(*, cmd_vx: float, cmd_wz: float,
                      odom_vx: float, odom_wz: float) -> dict:
     return {"cmd": {"vx": cmd_vx, "wz": cmd_wz},
             "odom": {"vx": odom_vx, "wz": odom_wz}}
+
+
+def mission_payload(state: str, fields: dict | None = None) -> dict:
+    """High-level mission status (e.g. frontier exploration).
+
+    `state` is a short machine state ("EXPLORING", "RETURNING", "IDLE", ...);
+    `fields` is a flat map of display values (numbers/strings) the viewer
+    renders as rows — keys are free-form so any mission node can feed it.
+    """
+    return {"state": state, "fields": fields or {}}
 
 
 def objects_payload(objects: list[dict]) -> dict:

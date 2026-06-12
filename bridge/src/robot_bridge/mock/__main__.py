@@ -26,7 +26,7 @@ from .world import build_world
 log = logging.getLogger("robot_bridge.mock")
 
 CHANNELS = ["scan", "map", "pose", "stats", "log", "status", "occupancy_grid",
-            "nav_status", "nav_path", "velocity", "imu", "objects"]
+            "nav_status", "nav_path", "velocity", "imu", "objects", "mission"]
 
 # fake semantic objects scattered in the world: revealed when the robot passes
 # within range, like the Roborock object-on-map feature
@@ -244,6 +244,25 @@ class MockBridge:
                 odom_vx=round(odom_vx, 3), odom_wz=round(odom_wz, 3)))
             await asyncio.sleep(0.1)
 
+    async def mission_loop(self):
+        """Fake frontier exploration status, mirroring slam_bringup's
+        /explore/status JSON (state, frontiers, time budget, coverage)."""
+        rng = np.random.default_rng(self.args.seed + 4)
+        frontiers = 40.0
+        while True:
+            await asyncio.sleep(1.0)
+            t = time.time() - self.t0
+            state = "RETURNING" if (t % 90.0) > 75.0 else "EXPLORING"
+            frontiers = max(3.0, frontiers + float(rng.normal(0, 2.5)))
+            known = int((self.grid.visited & (self.grid.static != -1)).sum())
+            self.server.broadcast(protocol.CH_MISSION, protocol.mission_payload(
+                state, {
+                    "frontier_count": int(frontiers),
+                    "time_elapsed_s": round(t, 0),
+                    "time_remaining_s": max(0, round(900 - t, 0)),
+                    "free_cells_mapped": known,
+                }))
+
     async def objects_loop(self):
         """Reveal fake objects when the robot passes near them, with a synthetic
         camera-crop thumbnail — exercises the Roborock-style object map."""
@@ -351,6 +370,7 @@ class MockBridge:
             self.path_loop(),
             self.velocity_loop(),
             self.imu_loop(),
+            self.mission_loop(),
             self.objects_loop(),
             self.chatter_loop(),
         ]

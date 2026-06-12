@@ -121,8 +121,8 @@
   left: 50%;
   bottom: 14px;
   transform: translateX(-50%);
-  width: 460px;
-  max-height: 290px;
+  width: 500px;
+  max-height: 340px;
   background: rgba(19, 24, 32, 0.92);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -150,6 +150,42 @@
 .mc-counter { display: flex; flex-direction: column; align-items: center; }
 .mc-num { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--accent); }
 .mc-label { font-size: 9px; letter-spacing: 0.1em; color: var(--text-dim); }
+
+.mc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mc-block {
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.mc-block-title {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+
+.mc-state { font-family: var(--font-mono); font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+
+.mc-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.mc-kv span:first-child { color: var(--text-dim); }
 
 .mc-rows {
   display: flex;

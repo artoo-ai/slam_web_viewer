@@ -17,6 +17,7 @@ import { velocityFeed } from '../../stores/velocityFeed'
 import { imuFeed } from '../../stores/imuFeed'
 import { mapFeed } from '../../stores/mapFeed'
 import { useObjectsStore } from '../../stores/objectsStore'
+import { useMissionStore, type MissionPayload } from '../../stores/missionStore'
 import type {
   CmdAckPayload,
   DecodedFrame,
@@ -121,6 +122,9 @@ class Connection {
         useObjectsStore.getState().setObjects(data.objects)
         break
       }
+      case CH.MISSION:
+        useMissionStore.getState().setMission(frame.ts, frame.data as MissionPayload)
+        break
       case CH.POSE:
         poseFeed.push(frame.data as PosePayload)
         break
