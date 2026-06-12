@@ -790,10 +790,10 @@ def main() -> None:
                         help="vision_msgs/Detection3DArray for object mapping ('' disables)")
     parser.add_argument("--imu-topic", default="/livox/imu",
                         help="sensor_msgs/Imu topic, decimated to 10 Hz ('' disables)")
-    # slam_bringup's d435.launch.py runs the front camera as namespace
-    # "d435_front" with camera_name=d435_front -> doubled prefix on topics
+    # slam_bringup's d435.launch.py: namespace d435_front, node keeps "camera"
+    # as its internal name -> /d435_front/camera/... (confirmed via Foxglove)
     parser.add_argument("--camera-topic",
-                        default="/d435_front/d435_front/color/image_raw",
+                        default="/d435_front/camera/color/image_raw",
                         help="single-camera shorthand: rgb stream Image topic ('' disables)")
     parser.add_argument("--camera", action="append", default=None, metavar="NAME=TOPIC",
                         help="named camera stream (repeatable, up to 4); overrides --camera-topic")
