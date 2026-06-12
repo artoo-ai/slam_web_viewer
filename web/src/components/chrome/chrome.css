@@ -267,6 +267,49 @@
 .stale-bad { color: var(--err); animation: smear-pulse 1s infinite; }
 .stale-none { color: var(--text-dim); }
 
+/* ---- known-issue alert banners ---- */
+.alert-stack {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+  z-index: 5;
+}
+
+.alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  border-radius: 5px;
+  cursor: help;
+}
+
+.alert-banner em { font-style: normal; opacity: 0.75; font-weight: 400; }
+
+.alert-banner button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0.7;
+  padding: 0 2px;
+}
+
+.alert-error { background: var(--err); animation: smear-pulse 1.2s infinite; }
+.alert-warn { background: rgba(251, 191, 36, 0.92); color: #1a1408; }
+
+.log-repeat { color: var(--accent); font-weight: 700; }
+
 /* ---- config audit ---- */
 .cfg-audit { padding: 8px 10px; }
 

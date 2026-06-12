@@ -17,6 +17,7 @@ export function LogPanel() {
         {logs.map((entry) => (
           <li key={entry.key} className={`log-level-${entry.level}`}>
             {new Date(entry.ts * 1000).toLocaleTimeString()} {entry.message}
+            {entry.repeats > 1 && <b className="log-repeat"> ×{entry.repeats}</b>}
           </li>
         ))}
       </ul>
