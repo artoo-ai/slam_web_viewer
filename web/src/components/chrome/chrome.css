@@ -118,9 +118,8 @@
 /* ---- metrics card ---- */
 .metrics-card {
   position: absolute;
-  left: 50%;
+  left: 14px;
   bottom: 14px;
-  transform: translateX(-50%);
   width: 500px;
   max-height: 340px;
   background: rgba(19, 24, 32, 0.92);
