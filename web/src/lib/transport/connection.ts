@@ -164,9 +164,12 @@ class Connection {
       case CH.LOG:
         useTelemetryStore.getState().addLog(frame.ts, frame.data as LogPayload)
         break
-      case CH.STATUS:
-        useTelemetryStore.getState().setStatusEvent(frame.ts, frame.data as StatusPayload)
+      case CH.STATUS: {
+        const status = frame.data as StatusPayload
+        if (status.event === 'map_reset') mapFeed.clear() // SLAM corrected the frame
+        useTelemetryStore.getState().setStatusEvent(frame.ts, status)
         break
+      }
       case CH.CMD_ACK: {
         const ack = frame.data as CmdAckPayload
         const resolve = this.pendingAcks.get(ack.id)

@@ -53,9 +53,16 @@ log = logging.getLogger("robot_bridge.ros2")
 # map->odom->base_link->livox TF; 3d: /cloud_registered arrives in FAST-LIO2's
 # camera_init odom frame and rides RTABMap's map->camera_init correction).
 STACK_PRESETS = {
-    "3d": {"scan": "/cloud_registered", "odom": "/Odometry", "map": "/map"},
-    "2d": {"scan": "/livox/lidar", "odom": "/odom", "map": "/map"},
+    "3d": {"scan": "/cloud_registered", "odom": "/Odometry", "map": "/map",
+           "odom_frame": "camera_init"},
+    "2d": {"scan": "/livox/lidar", "odom": "/odom", "map": "/map",
+           "odom_frame": "odom"},
 }
+
+# map->odom jump beyond these = SLAM correction: the accumulated 3D map's baked
+# positions are stale relative to the corrected world -> re-bake
+CORRECTION_DIST_M = 0.15
+CORRECTION_YAW_RAD = 0.10
 
 NAV_ACTION = "navigate_to_pose"
 NAV_FEEDBACK_MIN_INTERVAL = 0.5  # rate-limit nav_status to 2 Hz
@@ -129,6 +136,7 @@ class Ros2Bridge:
         self._ext_nav_state: str | None = None
         self.scan2d_count = 0
         self._scan2d_last = 0
+        self._last_map_odom: tuple[float, float, float] | None = None
 
         # camera
         self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
@@ -262,6 +270,8 @@ class Ros2Bridge:
 
         # drain asyncio -> ROS jobs (nav goal send/cancel) at 20 Hz
         node.create_timer(0.05, self._drain_jobs)
+        # watch map->odom for SLAM correction jumps (re-bake the 3D map)
+        node.create_timer(1.0, self._check_map_correction)
 
         log.info("rclpy spinning: %s", ", ".join(subscribed))
         self.log_clients("info", f"bridge up: {', '.join(subscribed)}")
@@ -299,7 +309,7 @@ class Ros2Bridge:
         frame = header.frame_id
         transformed = True
         if frame and frame != "map":
-            tq = self._lookup_map_tf(frame)
+            tq = self._lookup_map_tf(frame, header.stamp)
             if tq is None:
                 # BENCH MODE: no TF chain (sensor running without SLAM) —
                 # show the live cloud in the raw sensor frame at the origin
@@ -328,18 +338,50 @@ class Ros2Bridge:
             if delta is not None:
                 self._post(protocol.CH_MAP, protocol.pack_scan(delta), ts)
 
-    def _lookup_map_tf(self, frame: str):
-        """Latest map<-frame transform as ((x,y,z), (qx,qy,qz,qw)), or None."""
+    def _lookup_map_tf(self, frame: str, stamp=None):
+        """map<-frame transform as ((x,y,z), (qx,qy,qz,qw)), or None.
+
+        With `stamp`, looks up the transform at that time (so a rotating scan
+        is placed where the robot WAS, not where it is now) and falls back to
+        latest if that instant isn't in the TF buffer yet."""
+        import rclpy.time
         try:
-            import rclpy.time
-            t = self._tf_buffer.lookup_transform("map", frame, rclpy.time.Time())
+            when = rclpy.time.Time.from_msg(stamp) if stamp is not None \
+                else rclpy.time.Time()
+            t = self._tf_buffer.lookup_transform("map", frame, when)
         except Exception:  # noqa: BLE001 — tf2 raises several lookup error types
+            if stamp is not None:
+                return self._lookup_map_tf(frame)  # fall back to latest
             if not self._tf_warned:
                 self._tf_warned = True
                 log.warning("no map->%s TF yet; dropping frames until it appears", frame)
             return None
         tr, ro = t.transform.translation, t.transform.rotation
         return (tr.x, tr.y, tr.z), (ro.x, ro.y, ro.z, ro.w)
+
+    def _check_map_correction(self) -> None:
+        """SLAM corrections move the map frame under the baked 3D points.
+        On a significant map->odom jump: reset the accumulator and tell the
+        viewer to clear, so the map re-bakes against the corrected world."""
+        tq = self._lookup_map_tf(self.args.odom_frame)
+        if tq is None:
+            return
+        (x, y, _), (qx, qy, qz, qw) = tq
+        yaw = math.atan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
+        prev = self._last_map_odom
+        self._last_map_odom = (x, y, yaw)
+        if prev is None:
+            return
+        d = math.hypot(x - prev[0], y - prev[1])
+        dyaw = abs(math.atan2(math.sin(yaw - prev[2]), math.cos(yaw - prev[2])))
+        if d > CORRECTION_DIST_M or dyaw > CORRECTION_YAW_RAD:
+            self.mapacc.reset()
+            # status channel is reliable/ordered — a droppable clear marker
+            # could be evicted by the next map delta
+            self._post(protocol.CH_STATUS, protocol.status_payload("map_reset"))
+            self.log_clients("info",
+                             f"SLAM correction (Δ{d:.2f} m, {math.degrees(dyaw):.1f}°) — "
+                             f"3D map re-baking against corrected frame")
 
     def on_odom(self, msg) -> None:
         p, q = odometry_to_pose(msg)
@@ -900,6 +942,7 @@ def main() -> None:
     args = parser.parse_args()
 
     preset = STACK_PRESETS[args.stack]
+    args.odom_frame = preset["odom_frame"]
     if args.scan_topic is None:
         args.scan_topic = preset["scan"]
     if args.odom_topic is None:

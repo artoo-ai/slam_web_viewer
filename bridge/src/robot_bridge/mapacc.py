@@ -43,6 +43,13 @@ class MapAccumulator:
             self._chunks.append(delta)
         return delta
 
+    def reset(self) -> None:
+        """Drop everything — used when SLAM corrects the map frame and the
+        baked positions are no longer where the world is."""
+        self._seen.clear()
+        self._chunks.clear()
+        self.total_points = 0
+
     def points(self) -> np.ndarray:
         """All retained map points as one (N, 4) float32 array."""
         if not self._chunks:
