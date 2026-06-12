@@ -60,6 +60,22 @@ STACK_PRESETS = {
 NAV_ACTION = "navigate_to_pose"
 NAV_FEEDBACK_MIN_INTERVAL = 0.5  # rate-limit nav_status to 2 Hz
 
+# /rosout forwarding: the robot's live "thought process". Per-node minimum
+# levels (rcl Log levels: 10 debug, 20 info, 30 warn, 40 error, 50 fatal) —
+# the mission node's INFO lines are the decisions; nav nodes only matter when
+# they complain.
+ROSOUT_NODE_LEVELS = {
+    "explore_manager": 20,
+    "bt_navigator": 30,
+    "planner_server": 30,
+    "controller_server": 30,
+    "behavior_server": 30,
+    "velocity_smoother": 30,
+    "slam_toolbox": 30,
+    "rf2o_laser_odometry": 30,
+}
+ROSOUT_MAX_HZ = 5.0  # global rate cap so a log storm can't flood the channel
+
 
 class Ros2Bridge:
     def __init__(self, args: argparse.Namespace):
@@ -108,6 +124,9 @@ class Ros2Bridge:
         self._tf_buffer = None
         self._tf_warned = False
         self._bench_mode = False  # true while scans render untransformed (no TF)
+        self._rosout_last = 0.0
+        self._rosout_dropped = 0
+        self._ext_nav_state: str | None = None
 
         # camera
         self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
@@ -176,6 +195,16 @@ class Ros2Bridge:
             node.create_subscription(Twist, self.args.cmd_vel_topic,
                                      self.on_cmd_vel, 10)
             subscribed.append(self.args.cmd_vel_topic)
+        if self.args.rosout:
+            from rcl_interfaces.msg import Log as RclLog
+            node.create_subscription(RclLog, "/rosout", self.on_rosout, 50)
+            subscribed.append("/rosout")
+        # status of goals sent by OTHER nodes (explore) to Nav2 — the GUI's own
+        # goals already report via the action client; this covers the rest
+        from action_msgs.msg import GoalStatusArray
+        node.create_subscription(GoalStatusArray,
+                                 f"/{NAV_ACTION}/_action/status",
+                                 self.on_external_nav_status, 10)
         if self.args.mission_topic:
             from std_msgs.msg import String
             node.create_subscription(String, self.args.mission_topic,
@@ -316,6 +345,48 @@ class Ros2Bridge:
     def on_cmd_vel(self, msg) -> None:
         self.cmd_vel = (float(msg.linear.x), float(msg.angular.z))
         self.cmd_vel_t = time.monotonic()
+
+    def on_rosout(self, msg) -> None:
+        """Forward relevant /rosout lines to the log channel — frontier picks,
+        planner failures, recoveries: the robot's reasoning, live in the UI."""
+        node_name = msg.name.split(".")[0]
+        min_level = ROSOUT_NODE_LEVELS.get(node_name)
+        if min_level is None or msg.level < min_level:
+            return
+        now = time.monotonic()
+        if now - self._rosout_last < 1.0 / ROSOUT_MAX_HZ:
+            self._rosout_dropped += 1
+            return
+        self._rosout_last = now
+        level = "error" if msg.level >= 40 else "warn" if msg.level >= 30 else "info"
+        suffix = f" (+{self._rosout_dropped} suppressed)" if self._rosout_dropped else ""
+        self._rosout_dropped = 0
+        self._post(protocol.CH_LOG, protocol.log_payload(
+            level, f"[{node_name}] {msg.msg}{suffix}"),
+            stamp_to_seconds(msg.stamp))
+
+    def on_external_nav_status(self, msg) -> None:
+        """GoalStatusArray for navigate_to_pose — surfaces what the EXPLORE
+        node's goals are doing (the GUI never sent them)."""
+        if not msg.status_list:
+            return
+        from action_msgs.msg import GoalStatus
+        latest = msg.status_list[-1]
+        state = {
+            GoalStatus.STATUS_ACCEPTED: "accepted",
+            GoalStatus.STATUS_EXECUTING: "navigating",
+            GoalStatus.STATUS_SUCCEEDED: "succeeded",
+            GoalStatus.STATUS_CANCELED: "canceled",
+            GoalStatus.STATUS_ABORTED: "aborted",
+        }.get(latest.status)
+        if state is None or state == self._ext_nav_state:
+            return
+        self._ext_nav_state = state
+        self._post(protocol.CH_NAV_STATUS,
+                   protocol.nav_status_payload(state, "explore"))
+        if state == "aborted":
+            self.log_clients("warn", "nav goal aborted — likely no valid path "
+                                     "(check costmap layers for sealed passages)")
 
     def on_mission(self, msg) -> None:
         """slam_bringup's /explore/status: std_msgs/String carrying JSON like
@@ -786,6 +857,9 @@ def main() -> None:
                         help="commanded Twist for the velocity channel ('' disables)")
     parser.add_argument("--mission-topic", default="/explore/status",
                         help="std_msgs/String JSON mission status ('' disables)")
+    parser.add_argument("--rosout", action="store_true", default=True,
+                        help="forward filtered /rosout to the log channel")
+    parser.add_argument("--no-rosout", dest="rosout", action="store_false")
     parser.add_argument("--detections-topic", default="",
                         help="vision_msgs/Detection3DArray for object mapping ('' disables)")
     parser.add_argument("--imu-topic", default="/livox/imu",
