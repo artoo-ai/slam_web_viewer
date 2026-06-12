@@ -8,7 +8,21 @@ import { connection } from '../../lib/transport/connection'
 
 const connectionSend = connection.sendCommand.bind(connection)
 import { takeScreenshot } from '../../lib/viewportRefs'
+import { EXPECTED_PARAMS, EXTRA_KNOWN_PARAMS } from '../../config/expectedParams'
 import type { ParamAck } from '../../types/channels'
+
+/** node|param presets for the Remote Param dropdown: audit manifest + extras,
+ *  grouped by node. value suggestion comes from expect / suggest. */
+const PARAM_PRESETS = [
+  ...EXPECTED_PARAMS.map((e) => ({
+    node: e.node,
+    param: e.param,
+    suggest: e.expect === null ? '' : Array.isArray(e.expect) ? `[${e.expect.join(', ')}]` : String(e.expect),
+    tip: e.tip,
+  })),
+  ...EXTRA_KNOWN_PARAMS,
+]
+const PRESET_NODES = [...new Set(PARAM_PRESETS.map((p) => p.node))]
 import './chrome.css'
 
 /** SJY-style left sidebar: View Options -> Follow -> Color -> Bookmarks ->
@@ -45,6 +59,7 @@ export function Sidebar() {
   const send = useSendCommand()
 
   const [bookmarkSel, setBookmarkSel] = useState('')
+  const [custom, setCustom] = useState(false)
   const [node, setNode] = useState('slam_toolbox')
   const [pname, setPname] = useState('')
   const [pvalue, setPvalue] = useState('')
@@ -166,8 +181,41 @@ export function Sidebar() {
 
       <div className="sb-section">
         <div className="sb-title">Remote Param</div>
-        <input className="sb-input" placeholder="node" value={node} onChange={(e) => setNode(e.target.value)} />
-        <input className="sb-input" placeholder="parameter" value={pname} onChange={(e) => setPname(e.target.value)} />
+        <select
+          className="sb-select"
+          title="Known node/parameter combinations (the audited params + useful runtime toggles). Pick one to fill the fields — or Custom to type your own."
+          value={custom ? 'custom' : `${node}|${pname}`}
+          onChange={(e) => {
+            if (e.target.value === 'custom') {
+              setCustom(true)
+              return
+            }
+            const preset = PARAM_PRESETS.find((p) => `${p.node}|${p.param}` === e.target.value)
+            if (preset) {
+              setCustom(false)
+              setNode(preset.node)
+              setPname(preset.param)
+              setPvalue(preset.suggest)
+            }
+          }}
+        >
+          <option value="custom">Custom…</option>
+          {PRESET_NODES.map((n) => (
+            <optgroup key={n} label={n}>
+              {PARAM_PRESETS.filter((p) => p.node === n).map((p) => (
+                <option key={`${p.node}|${p.param}`} value={`${p.node}|${p.param}`} title={p.tip}>
+                  {p.param}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        {custom && (
+          <>
+            <input className="sb-input" placeholder="node" value={node} onChange={(e) => setNode(e.target.value)} />
+            <input className="sb-input" placeholder="parameter" value={pname} onChange={(e) => setPname(e.target.value)} />
+          </>
+        )}
         <input className="sb-input" placeholder="value" value={pvalue} onChange={(e) => setPvalue(e.target.value)} />
         <div className="sb-row">
           <button className="sb-btn" disabled={!pname.trim()} onClick={() => void sendParam()}>Send</button>
