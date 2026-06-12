@@ -127,6 +127,8 @@ class Ros2Bridge:
         self._rosout_last = 0.0
         self._rosout_dropped = 0
         self._ext_nav_state: str | None = None
+        self.scan2d_count = 0
+        self._scan2d_last = 0
 
         # camera
         self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
@@ -195,6 +197,15 @@ class Ros2Bridge:
             node.create_subscription(Twist, self.args.cmd_vel_topic,
                                      self.on_cmd_vel, 10)
             subscribed.append(self.args.cmd_vel_topic)
+        # watch the 2D /scan that rf2o consumes — distinct from the 3D cloud;
+        # it's the input whose silent death corrupts maps (rate goes into stats)
+        if self.args.scan2d_topic and self.args.scan_msg != "laserscan":
+            from sensor_msgs.msg import LaserScan
+            from rclpy.qos import qos_profile_sensor_data
+            node.create_subscription(LaserScan, self.args.scan2d_topic,
+                                     lambda _msg: self._count_scan2d(),
+                                     qos_profile_sensor_data)
+            subscribed.append(f"{self.args.scan2d_topic} (watch)")
         if self.args.rosout:
             from rcl_interfaces.msg import Log as RclLog
             node.create_subscription(RclLog, "/rosout", self.on_rosout, 50)
@@ -345,6 +356,9 @@ class Ros2Bridge:
     def on_cmd_vel(self, msg) -> None:
         self.cmd_vel = (float(msg.linear.x), float(msg.angular.z))
         self.cmd_vel_t = time.monotonic()
+
+    def _count_scan2d(self) -> None:
+        self.scan2d_count += 1
 
     def on_rosout(self, msg) -> None:
         """Forward relevant /rosout lines to the log channel — frontier picks,
@@ -805,14 +819,18 @@ class Ros2Bridge:
             await asyncio.sleep(1.0)
             scan_hz = float(self.scan_frames - self._scan_frames_last)
             self._scan_frames_last = self.scan_frames
-            self.server.broadcast(protocol.CH_STATS, protocol.stats_payload(
+            payload = protocol.stats_payload(
                 keyframes=self.map_updates,
                 total_pts=self.total_pts,
                 distance_m=round(self.distance_m, 2),
                 duration_s=round(time.time() - self.t0, 1),
                 scan_hz=scan_hz,
                 health=1.0,
-                clients=len(self.server.clients)))
+                clients=len(self.server.clients))
+            if self.args.scan2d_topic:
+                payload["scan2d_hz"] = float(self.scan2d_count - self._scan2d_last)
+                self._scan2d_last = self.scan2d_count
+            self.server.broadcast(protocol.CH_STATS, payload)
 
     async def run(self) -> None:
         self.loop = asyncio.get_running_loop()
@@ -857,6 +875,8 @@ def main() -> None:
                         help="commanded Twist for the velocity channel ('' disables)")
     parser.add_argument("--mission-topic", default="/explore/status",
                         help="std_msgs/String JSON mission status ('' disables)")
+    parser.add_argument("--scan2d-topic", default="/scan",
+                        help="2D LaserScan to watch (rf2o's input; '' disables)")
     parser.add_argument("--rosout", action="store_true", default=True,
                         help="forward filtered /rosout to the log channel")
     parser.add_argument("--no-rosout", dest="rosout", action="store_false")

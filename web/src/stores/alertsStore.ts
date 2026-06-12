@@ -48,6 +48,24 @@ export const KNOWN_ISSUES: KnownIssue[] = [
   },
 ]
 
+/** Synthetic issues raised by client-side detectors (not log patterns). */
+export const SYNTHETIC_ISSUES: Record<string, Omit<KnownIssue, 're'>> = {
+  'exploration-stalled': {
+    id: 'exploration-stalled',
+    severity: 'error',
+    title: 'exploration stalled — no coverage progress',
+    explain:
+      'State is EXPLORING but mapped area has not grown for 2+ minutes while goals keep failing. The robot is cycling pick-frontier → planner-fails → abort. Check the Log tab for the failing stage, the costmap layers for sealed passages, and whether the map looks ghosted/rotated (corrupted by an earlier odometry stall — if so, restart SLAM fresh).',
+  },
+  'scan2d-dead': {
+    id: 'scan2d-dead',
+    severity: 'error',
+    title: '2D /scan silent — laser odometry input dead',
+    explain:
+      'The bridge sees no messages on /scan (pointcloud_to_laserscan output, rf2o’s input) even though the 3D cloud may be flowing. Odometry will freeze and any motion corrupts the map. Restart the sensor pipeline (start_sensors.sh / start_slam_2d.sh).',
+  },
+}
+
 const QUIET_EXPIRE_MS = 45_000
 
 export interface ActiveAlert {
@@ -61,6 +79,7 @@ export interface ActiveAlert {
 interface AlertsState {
   active: Record<string, ActiveAlert>
   ingest: (message: string) => void
+  raise: (syntheticId: string) => void
   dismiss: (id: string) => void
   prune: () => void
 }
@@ -80,6 +99,21 @@ export const useAlertsStore = create<AlertsState>((set, get) => ({
           void import('../lib/tts/ttsManager').then((m) => m.speakAlert(`Warning. ${issue.title}.`))
         }
       }
+    }
+  },
+  raise: (syntheticId) => {
+    const spec = SYNTHETIC_ISSUES[syntheticId]
+    if (!spec) return
+    const now = performance.now()
+    const existing = get().active[syntheticId]
+    if (existing) {
+      set({ active: { ...get().active, [syntheticId]: { ...existing, count: existing.count + 1, lastTs: now } } })
+      return
+    }
+    const issue: KnownIssue = { ...spec, re: /$^/ }
+    set({ active: { ...get().active, [syntheticId]: { issue, count: 1, firstTs: now, lastTs: now, dismissed: false } } })
+    if (spec.severity === 'error') {
+      void import('../lib/tts/ttsManager').then((m) => m.speakAlert(`Warning. ${spec.title}.`))
     }
   },
   dismiss: (id) => {

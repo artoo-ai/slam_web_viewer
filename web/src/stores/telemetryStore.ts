@@ -25,12 +25,21 @@ interface TelemetryState {
 }
 
 let logKey = 0
+let scan2dDeadFor = 0 // consecutive 1 Hz stats frames with scan2d at ~0
 
 export const useTelemetryStore = create<TelemetryState>((set) => ({
   stats: null,
   logs: [],
   lastStatusEvent: null,
-  setStats: (stats) => set({ stats }),
+  setStats: (stats) => {
+    if (stats.scan2d_hz !== undefined) {
+      scan2dDeadFor = stats.scan2d_hz < 1 ? scan2dDeadFor + 1 : 0
+      if (scan2dDeadFor >= 3) {
+        void import('./alertsStore').then((m) => m.useAlertsStore.getState().raise('scan2d-dead'))
+      }
+    }
+    set({ stats })
+  },
   addLog: (ts, log) =>
     set((s) => {
       void import('./alertsStore').then((m) => m.useAlertsStore.getState().ingest(log.message))

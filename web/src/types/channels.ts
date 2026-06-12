@@ -23,6 +23,8 @@ export interface StatsPayload {
   scan_hz: number
   health: number
   clients: number
+  /** rate of the 2D /scan that laser odometry consumes (distinct from the 3D cloud) */
+  scan2d_hz?: number
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'

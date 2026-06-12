@@ -206,7 +206,16 @@ export function MetricsCard() {
                 <span style={{ color: live.smearing ? 'var(--err)' : 'var(--ok)' }}>
                   {live.smearing ? 'SMEARING' : 'tracking'}
                 </span></div>
-              <div className="mc-kv"><span>scan</span><span>{stats ? stats.scan_hz.toFixed(1) : '—'} Hz</span></div>
+              <div className="mc-kv"><span>cloud 3D</span><span>{stats ? stats.scan_hz.toFixed(1) : '—'} Hz</span></div>
+              {stats?.scan2d_hz !== undefined && (
+                <div className="mc-kv"
+                     title="The 2D /scan that laser odometry (rf2o) consumes — DISTINCT from the 3D cloud. If this hits 0 while the cloud is green, pointcloud_to_laserscan died: odometry freezes and motion corrupts the map.">
+                  <span>scan 2D→odom</span>
+                  <span style={{ color: stats.scan2d_hz < 1 ? 'var(--err)' : 'var(--ok)' }}>
+                    {stats.scan2d_hz.toFixed(1)} Hz
+                  </span>
+                </div>
+              )}
             </div>
           </div>
           <div className="mc-rows">
