@@ -16,15 +16,14 @@ import './chrome.css'
 /** SJY-style floating bottom-center metrics card with tabs.
  *  Status tab: four big counters + velocity + nav state. */
 
-type Tab = 'Status' | 'Rotation' | 'IMU' | 'Objects' | 'Config' | 'Log'
+type Tab = 'Status' | 'Motion' | 'Objects' | 'Config' | 'Log'
 
 const TAB_TIPS: Record<Tab, string> = {
   Status: 'Session counters and navigation state at a glance.',
   Config:
     'Deployed-config audit: the live parameter values the robot is ACTUALLY running vs what they should be. Red row = stale build/deploy — rebuild before trusting any test result.',
-  Rotation:
-    'Commanded spin (blue) vs what odometry measured (amber). When blue spikes and amber stays flat, laser odometry is losing the rotation — scans smear into the map as ghost walls. The red alarm fires on exactly that.',
-  IMU: 'Gyro rates (the IMU DOES see rotations laser odometry misses) and accelerometer — spikes = impacts/vibration.',
+  Motion:
+    'Rotation tracking + IMU together: commanded spin (blue) vs odometry-measured (amber) on top, gyro/accel below. The gyro is the third opinion — it DOES see rotations laser odometry misses, so cmd spiking + odom flat + gyro following cmd = rf2o losing the spin (map smear).',
   Objects:
     'Semantic object memory: things detected on the map with a snapshot, label, confidence and position — like a robot vacuum’s object map. Click one to look at it.',
   Log: 'Bridge and SLAM events: map updates, goals, recordings, warnings.',
@@ -132,7 +131,7 @@ export function MetricsCard() {
   return (
     <div className="metrics-card">
       <div className="mc-tabs">
-        {(['Status', 'Rotation', 'IMU', 'Objects', 'Config', 'Log'] as Tab[]).map((t) => (
+        {(['Status', 'Motion', 'Objects', 'Config', 'Log'] as Tab[]).map((t) => (
           <button key={t} className={`mc-tab ${tab === t ? 'mc-tab-active' : ''}`}
                   title={TAB_TIPS[t]} onClick={() => setTab(t)}>
             {t}
@@ -235,8 +234,12 @@ export function MetricsCard() {
           </div>
         </div>
       )}
-      {tab === 'Rotation' && <VelocityPanel />}
-      {tab === 'IMU' && <ImuPanel />}
+      {tab === 'Motion' && (
+        <div className="mc-motion">
+          <VelocityPanel />
+          <ImuPanel />
+        </div>
+      )}
       {tab === 'Objects' && (
         <div className="mc-objects">
           {objects.length === 0 && <div className="mc-empty">no objects detected yet</div>}

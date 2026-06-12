@@ -121,7 +121,7 @@
   left: 14px;
   bottom: 14px;
   width: 500px;
-  max-height: 340px;
+  max-height: 400px;
   background: rgba(19, 24, 32, 0.92);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -237,6 +237,8 @@
 .mc-object-noimg { width: 72px; height: 54px; display: flex; align-items: center; justify-content: center;
                    font-size: 9px; color: var(--text-dim); background: var(--bg-panel); border-radius: 3px; }
 .mc-object-meta { font-family: var(--font-mono); font-size: 11px; line-height: 1.5; }
+
+.mc-motion .panel + .panel { border-top: 1px solid var(--border); }
 
 /* panels embedded in the card lose their own chrome */
 .metrics-card .panel { border: none; border-radius: 0; background: transparent; }
