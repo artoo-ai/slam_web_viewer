@@ -55,9 +55,10 @@ export function BboxReadout() {
   )
 }
 
-/** Camera strip, bottom-right above the bbox readout — one inset per stream
- *  the bridge advertises in hello.cameras (1-4, SJY-style thumbnail strip). */
-function OneCamera({ url, name }: { url: string; name: string }) {
+/** Camera dock: SJY-style slim strip flush against the bottom-right edge —
+ *  small thumbnails only, never floating windows. Streams come from
+ *  hello.cameras (1-4); missing slots render as dark placeholders. */
+function CamSlot({ url, name }: { url: string; name: string }) {
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
@@ -69,11 +70,12 @@ function OneCamera({ url, name }: { url: string; name: string }) {
       return () => clearTimeout(t)
     }
   }, [failed])
-  if (failed) return <div className="cam-thumb cam-thumb-offline">{name}: offline</div>
   return (
-    <div className="cam-thumb" title={`camera stream "${name}" — ${url}`}>
-      <img key={attempt} src={url} alt={name} onError={() => setFailed(true)} />
-      <span className="cam-thumb-label">{name}</span>
+    <div className="cam-slot" title={`camera "${name}" — ${url}`}>
+      {!failed && (
+        <img key={attempt} src={url} alt={name} onError={() => setFailed(true)} />
+      )}
+      <span className="cam-slot-label">{failed ? `${name}: offline` : name}</span>
     </div>
   )
 }
@@ -85,13 +87,17 @@ export function CameraInset() {
   if (!visible || status !== 'open') return null
   const fromQuery = new URLSearchParams(window.location.search).get('cam')
   const host = new URL(connection.url.replace(/^ws/, 'http')).hostname
-  const names = cameras?.length ? cameras.slice(0, 4) : ['rgb']
+  const names = (cameras?.length ? cameras : ['rgb']).slice(0, 4)
+  const placeholders = Math.max(0, 2 - names.length) // SJY look: keep ≥2 slots
   return (
-    <div className="cam-strip">
+    <div className="cam-dock">
       {names.map((name) => (
-        <OneCamera key={name}
-                   url={fromQuery && names.length === 1 ? fromQuery : `http://${host}:8080/stream/${name}`}
-                   name={name} />
+        <CamSlot key={name}
+                 url={fromQuery && names.length === 1 ? fromQuery : `http://${host}:8080/stream/${name}`}
+                 name={name} />
+      ))}
+      {Array.from({ length: placeholders }, (_, i) => (
+        <div key={`empty-${i}`} className="cam-slot cam-slot-empty" />
       ))}
     </div>
   )

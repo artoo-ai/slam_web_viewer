@@ -278,8 +278,8 @@
 
 .bbox {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  right: 10px;
+  bottom: 82px;
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-dim);
@@ -289,43 +289,39 @@
 
 .bbox-full { color: var(--warn); }
 
-.cam-strip {
+/* docked flush to the bottom-right edge — thumbnails only, no windows */
+.cam-dock {
   position: absolute;
-  right: 12px;
-  bottom: 86px;
+  right: 0;
+  bottom: 0;
   display: flex;
-  gap: 6px;
+  gap: 3px;
+  padding: 4px;
+  background: rgba(8, 10, 14, 0.78);
+  border-top-left-radius: 6px;
 }
 
-.cam-thumb {
+.cam-slot {
   position: relative;
-  width: 150px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  width: 118px;
+  height: 66px;
+  background: #05070a;
+  border-radius: 3px;
   overflow: hidden;
 }
 
-.cam-thumb img { display: block; width: 100%; }
+.cam-slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-.cam-thumb-label {
+.cam-slot-label {
   position: absolute;
-  left: 4px;
-  bottom: 3px;
-  padding: 0 4px;
+  left: 3px;
+  bottom: 2px;
+  padding: 0 3px;
   font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text);
-  background: rgba(11, 14, 19, 0.7);
+  font-size: 8px;
+  color: var(--text-dim);
+  background: rgba(11, 14, 19, 0.75);
   border-radius: 2px;
 }
 
-.cam-thumb-offline {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 50px;
-  background: var(--bg-panel);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-dim);
-}
+.cam-slot-empty { opacity: 0.6; }
