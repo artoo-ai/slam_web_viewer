@@ -106,6 +106,7 @@ class Ros2Bridge:
         self.odom_vel = (0.0, 0.0)
         self._tf_buffer = None
         self._tf_warned = False
+        self._bench_mode = False  # true while scans render untransformed (no TF)
 
         # camera
         self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
@@ -255,18 +256,36 @@ class Ros2Bridge:
 
     def _publish_scan(self, xyzi, header) -> None:
         frame = header.frame_id
+        transformed = True
         if frame and frame != "map":
             tq = self._lookup_map_tf(frame)
             if tq is None:
-                return  # TF chain not up yet — drop until it appears
-            xyzi = transform_xyzi(xyzi, *tq)
+                # BENCH MODE: no TF chain (sensor running without SLAM) —
+                # show the live cloud in the raw sensor frame at the origin
+                # instead of dropping it. Map accumulation stays off so wrong-
+                # frame points never get baked into the accumulated map.
+                transformed = False
+                if not self._bench_mode:
+                    self._bench_mode = True
+                    log.info("no map->%s TF — bench mode: live scan in sensor frame, "
+                             "map accumulation paused", frame)
+                    self.log_clients("warn", "bench mode: no TF to map — showing raw "
+                                             "sensor frame (start SLAM for mapping)")
+            else:
+                xyzi = transform_xyzi(xyzi, *tq)
+                if self._bench_mode:
+                    self._bench_mode = False
+                    log.info("map->%s TF available — leaving bench mode", frame)
+                    self.log_clients("info", "TF chain up — map-frame rendering and "
+                                             "map accumulation active")
         self.scan_frames += 1
         self.total_pts += len(xyzi)
         ts = stamp_to_seconds(header.stamp)
         self._post(protocol.CH_SCAN, protocol.pack_scan(xyzi), ts)
-        delta = self.mapacc.add_scan(xyzi)
-        if delta is not None:
-            self._post(protocol.CH_MAP, protocol.pack_scan(delta), ts)
+        if transformed:
+            delta = self.mapacc.add_scan(xyzi)
+            if delta is not None:
+                self._post(protocol.CH_MAP, protocol.pack_scan(delta), ts)
 
     def _lookup_map_tf(self, frame: str):
         """Latest map<-frame transform as ((x,y,z), (qx,qy,qz,qw)), or None."""
