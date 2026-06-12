@@ -38,6 +38,11 @@ export function speakAlert(text: string) {
   speak(text, true)
 }
 
+/** Non-preempting announcement (milestones like exploration complete). */
+export function speakNotice(text: string) {
+  speak(text, false)
+}
+
 let booted = false
 
 /** Idempotent: subscribes to status events and watches the smear alarm. */

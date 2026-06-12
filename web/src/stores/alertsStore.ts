@@ -8,7 +8,7 @@ import { create } from 'zustand'
 export interface KnownIssue {
   id: string
   re: RegExp
-  severity: 'warn' | 'error'
+  severity: 'warn' | 'error' | 'success'
   title: string
   explain: string
 }
@@ -56,6 +56,13 @@ export const SYNTHETIC_ISSUES: Record<string, Omit<KnownIssue, 're'>> = {
     title: 'exploration stalled — no coverage progress',
     explain:
       'State is EXPLORING but mapped area has not grown for 2+ minutes while goals keep failing. The robot is cycling pick-frontier → planner-fails → abort. Check the Log tab for the failing stage, the costmap layers for sealed passages, and whether the map looks ghosted/rotated (corrupted by an earlier odometry stall — if so, restart SLAM fresh).',
+  },
+  'exploration-complete': {
+    id: 'exploration-complete',
+    severity: 'success',
+    title: 'EXPLORATION COMPLETE',
+    explain:
+      'The exploration node reports it is finished — no reachable frontiers remain (or the time budget ran out). The robot stopping now is SUCCESS, not a failure. The map is done: good moment to Save Map (.qpc) and stop recording.',
   },
   'scan2d-dead': {
     id: 'scan2d-dead',
@@ -114,6 +121,8 @@ export const useAlertsStore = create<AlertsState>((set, get) => ({
     set({ active: { ...get().active, [syntheticId]: { issue, count: 1, firstTs: now, lastTs: now, dismissed: false } } })
     if (spec.severity === 'error') {
       void import('../lib/tts/ttsManager').then((m) => m.speakAlert(`Warning. ${spec.title}.`))
+    } else if (spec.severity === 'success') {
+      void import('../lib/tts/ttsManager').then((m) => m.speakNotice(spec.title))
     }
   },
   dismiss: (id) => {
@@ -123,7 +132,11 @@ export const useAlertsStore = create<AlertsState>((set, get) => ({
   prune: () => {
     const now = performance.now()
     const next = Object.fromEntries(
-      Object.entries(get().active).filter(([, a]) => now - a.lastTs < QUIET_EXPIRE_MS),
+      Object.entries(get().active).filter(
+        // success notices persist until dismissed — they exist precisely for
+        // the "stepped away and missed it" case
+        ([, a]) => a.issue.severity === 'success' || now - a.lastTs < QUIET_EXPIRE_MS,
+      ),
     )
     if (Object.keys(next).length !== Object.keys(get().active).length) set({ active: next })
   },

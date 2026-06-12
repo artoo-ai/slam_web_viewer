@@ -47,6 +47,8 @@ const MISSION_COLORS: Record<string, string> = {
   EXPLORING: 'var(--accent)',
   RETURNING: 'var(--warn)',
   DONE: 'var(--ok)',
+  COMPLETE: 'var(--ok)',
+  FINISHED: 'var(--ok)',
   IDLE: 'var(--text-dim)',
 }
 

@@ -16,6 +16,19 @@ interface MissionState {
 const STALL_MS = 120_000
 let lastCells: number | null = null
 let lastGrowth = performance.now()
+let lastState: string | null = null
+
+const TERMINAL_OK = /COMPLETE|DONE|FINISH|SUCCESS/i
+
+function checkTransitions(m: MissionPayload) {
+  if (m.state !== lastState) {
+    if (TERMINAL_OK.test(m.state)) {
+      void import('./alertsStore').then((a) =>
+        a.useAlertsStore.getState().raise('exploration-complete'))
+    }
+    lastState = m.state
+  }
+}
 
 function checkStall(m: MissionPayload) {
   const cells = Number(m.fields['free_cells_mapped'])
@@ -35,6 +48,7 @@ export const useMissionStore = create<MissionState>((set) => ({
   mission: null,
   setMission: (ts, m) => {
     checkStall(m)
+    checkTransitions(m)
     set({ mission: { ...m, ts } })
   },
 }))
