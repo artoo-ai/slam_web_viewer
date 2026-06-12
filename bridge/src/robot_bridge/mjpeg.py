@@ -85,10 +85,12 @@ class MjpegServer:
             await writer.drain()
             return
         size = target.stat().st_size
+        # NO Access-Control-Allow-Origin here: the download is a top-level
+        # navigation (exempt from CORS), and omitting it stops arbitrary
+        # websites from fetch()-reading robot files cross-origin.
         writer.write(
             b"HTTP/1.1 200 OK\r\n"
             b"Content-Type: application/octet-stream\r\n"
-            b"Access-Control-Allow-Origin: *\r\n"
             b"Content-Disposition: attachment; filename=\"" + target.name.encode() + b"\"\r\n"
             b"Content-Length: " + str(size).encode() + b"\r\n\r\n")
         with open(target, "rb") as f:

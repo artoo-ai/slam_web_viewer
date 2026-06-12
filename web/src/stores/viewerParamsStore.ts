@@ -22,13 +22,13 @@ interface ViewerParams {
 }
 
 export const useViewerParams = create<ViewerParams>((set) => ({
-  pointSize: 3.0,
+  pointSize: 1.5,
   colorMode: 'intensity',
   gamma: 1.0,
   follow: 'free',
   heightMin: 0.0,
   heightMax: 2.5,
-  voiceAlerts: false,
+  voiceAlerts: true,
   setPointSize: (pointSize) => set({ pointSize }),
   setColorMode: (colorMode) => set({ colorMode }),
   setGamma: (gamma) => set({ gamma }),
