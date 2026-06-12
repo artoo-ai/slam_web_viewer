@@ -112,6 +112,15 @@
 .sb-ack-timeout { color: var(--warn); }
 
 .sb-recpath { font-family: var(--font-mono); font-size: 10px; color: var(--warn); word-break: break-all; }
+
+.sb-download {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.sb-download:hover { text-decoration: underline; }
 .sb-hint { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
 .sb-recording { margin-top: auto; }
 

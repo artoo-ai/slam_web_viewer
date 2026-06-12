@@ -65,16 +65,24 @@ export function Sidebar() {
   const [pvalue, setPvalue] = useState('')
   const [ack, setAck] = useState<string | null>(null)
   const [mapSaved, setMapSaved] = useState<string | null>(null)
+  const [mapUrl, setMapUrl] = useState<string | null>(null)
+
+  const fileUrl = (path: string) => {
+    const host = new URL(connection.url.replace(/^ws/, 'http')).hostname
+    return `http://${host}:8080/files/${path}`
+  }
 
   const saveMap = async () => {
     setMapSaved('saving…')
+    setMapUrl(null)
     const reply = (await connectionSend({ cmd: 'map_save' }, 30_000)) as
       | { cmd: string; ok: boolean; path?: string; points?: number; bytes?: number; message?: string }
       | null
     if (!reply) setMapSaved('no reply')
-    else if (reply.ok && reply.path)
+    else if (reply.ok && reply.path) {
       setMapSaved(`${reply.path} (${((reply.bytes ?? 0) / 1024).toFixed(0)} KiB)`)
-    else setMapSaved(reply.message ?? 'failed')
+      setMapUrl(fileUrl(reply.path))
+    } else setMapSaved(reply.message ?? 'failed')
   }
 
   const sendParam = async () => {
@@ -248,6 +256,12 @@ export function Sidebar() {
         <div className="sb-hint">replay: python -m robot_bridge.replay &lt;file&gt;</div>
         <button className="sb-btn sb-btn-wide" onClick={() => void saveMap()}>Save Map (.qpc)</button>
         {mapSaved && <div className="sb-recpath">{mapSaved}</div>}
+        {mapUrl && (
+          <a className="sb-download" href={mapUrl}>⬇ download to this computer</a>
+        )}
+        {rec.path && !rec.recording && (
+          <a className="sb-download" href={fileUrl(rec.path)}>⬇ download recording</a>
+        )}
       </div>
     </aside>
   )

@@ -35,6 +35,9 @@ class MjpegServer:
                 if line in (b"\r\n", b"\n", b""):
                     break
             path = request.split(b" ")[1] if len(request.split(b" ")) > 1 else b"/"
+            if path.startswith(b"/files/"):
+                await self._serve_file(writer, path[len(b"/files/"):].split(b"?")[0].decode())
+                return
             if not path.startswith(b"/stream/"):
                 writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
                 await writer.drain()
@@ -66,6 +69,32 @@ class MjpegServer:
             pass
         finally:
             writer.close()
+
+    async def _serve_file(self, writer: asyncio.StreamWriter, rel: str) -> None:
+        """Download endpoint for bridge artifacts: only maps/ and recordings/
+        under the bridge's working directory are reachable."""
+        from pathlib import Path
+        from urllib.parse import unquote
+
+        rel = unquote(rel)
+        allowed = rel.startswith(("maps/", "recordings/")) and ".." not in rel \
+            and not rel.startswith("/")
+        target = Path(rel)
+        if not allowed or not target.is_file():
+            writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
+            await writer.drain()
+            return
+        size = target.stat().st_size
+        writer.write(
+            b"HTTP/1.1 200 OK\r\n"
+            b"Content-Type: application/octet-stream\r\n"
+            b"Access-Control-Allow-Origin: *\r\n"
+            b"Content-Disposition: attachment; filename=\"" + target.name.encode() + b"\"\r\n"
+            b"Content-Length: " + str(size).encode() + b"\r\n\r\n")
+        with open(target, "rb") as f:
+            while chunk := f.read(65536):
+                writer.write(chunk)
+                await writer.drain()
 
     async def serve_forever(self, host: str, port: int) -> None:
         server = await asyncio.start_server(self._handle, host, port)
