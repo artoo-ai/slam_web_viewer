@@ -22,9 +22,15 @@ self.onmessage = (e: MessageEvent<ArrayBuffer>) => {
   }
   if (typeof frame?.topic !== 'string') return
 
-  if (frame.topic === CH.SCAN || frame.topic === CH.MAP || frame.topic === CH.SCAN_LOW) {
+  const binStride =
+    frame.topic === CH.SCAN || frame.topic === CH.MAP || frame.topic === CH.SCAN_LOW
+      ? 16 // [x,y,z,intensity]
+      : frame.topic === CH.DEPTH
+        ? 24 // [x,y,z,r,g,b]
+        : 0
+  if (binStride > 0) {
     const view = frame.data as Uint8Array
-    if (!(view instanceof Uint8Array) || view.byteLength % 16 !== 0) return
+    if (!(view instanceof Uint8Array) || view.byteLength % binStride !== 0) return
     const points = toAlignedFloat32(view)
     const msg: DecodedFrame = { topic: frame.topic, ts: frame.ts, seq: frame.seq, points }
     self.postMessage(msg, { transfer: [points.buffer] })

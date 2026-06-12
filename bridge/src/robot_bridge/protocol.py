@@ -32,6 +32,7 @@ CH_NAV_PATH = "nav_path"
 CH_VELOCITY = "velocity"
 CH_IMU = "imu"
 CH_MAP = "map"  # accumulated-map delta: bin float32 [x,y,z,intensity]*N, map frame
+CH_DEPTH = "depth"  # depth-camera cloud: bin float32 [x,y,z,r,g,b]*N (stride 24)
 CH_OBJECTS = "objects"  # persistent semantic objects with thumbnails
 CH_MISSION = "mission"  # high-level mission/exploration state
 CH_NODE_PARAMS = "node_params"  # deployed-config audit (docs/diagnostics.md §1)
@@ -41,11 +42,12 @@ GRID_LAYERS = ("map", "costmap_global", "costmap_local")
 
 # Reserved channels (documented in docs/protocol.md, implemented in later slices)
 RESERVED_CHANNELS = (
-    "depth",
     "detections",
     "processing",
     "loop_closure",
 )
+
+DEPTH_STRIDE_BYTES = 24  # float32 x, y, z, r, g, b
 
 NAV_STATES = ("accepted", "navigating", "succeeded", "aborted", "canceled", "rejected")
 
@@ -95,6 +97,17 @@ def pack_scan(xyzi: np.ndarray) -> bytes:
     if not xyzi.flags.c_contiguous:
         xyzi = np.ascontiguousarray(xyzi)
     return xyzi.tobytes()
+
+
+def pack_xyzrgb(pts: np.ndarray) -> bytes:
+    """Pack an (N, 6) float32 [x,y,z,r,g,b] array into the depth bin payload."""
+    if pts.dtype != np.float32:
+        raise ValueError(f"depth cloud must be float32, got {pts.dtype}")
+    if pts.ndim != 2 or pts.shape[1] != 6:
+        raise ValueError(f"depth cloud must have shape (N, 6), got {pts.shape}")
+    if not pts.flags.c_contiguous:
+        pts = np.ascontiguousarray(pts)
+    return pts.tobytes()
 
 
 def unpack_scan(data: bytes) -> np.ndarray:

@@ -25,7 +25,7 @@ from .world import build_world
 
 log = logging.getLogger("robot_bridge.mock")
 
-CHANNELS = ["scan", "map", "scan_low", "pose", "stats", "log", "status", "occupancy_grid",
+CHANNELS = ["scan", "map", "scan_low", "depth", "pose", "stats", "log", "status", "occupancy_grid",
             "nav_status", "nav_path", "velocity", "imu", "objects", "mission",
             "node_params"]
 
@@ -338,6 +338,31 @@ class MockBridge:
                 self.server.broadcast(protocol.CH_OBJECTS,
                                       protocol.objects_payload(self.found_objects))
 
+    async def depth_loop(self):
+        """Fake D435 cloud: the forward ±34° sector of a scan, colored by
+        height — exercises the rgb depth layer without hardware."""
+        while True:
+            await asyncio.sleep(0.2)
+            if not self.server.clients:
+                continue
+            d = self.distance()
+            pos, q, _ = pose_at(d)
+            yaw = 2.0 * np.arctan2(q[2], q[3])
+            pts = self.synth.scan(pos, 6000)
+            rel = np.arctan2(pts[:, 1] - pos[1], pts[:, 0] - pos[0]) - yaw
+            rel = np.arctan2(np.sin(rel), np.cos(rel))
+            rng = np.hypot(pts[:, 0] - pos[0], pts[:, 1] - pos[1])
+            sel = pts[(np.abs(rel) < 0.6) & (rng < 5.0)]
+            if len(sel) == 0:
+                continue
+            out = np.empty((len(sel), 6), dtype=np.float32)
+            out[:, :3] = sel[:, :3]
+            t = np.clip(sel[:, 2] / 2.5, 0, 1)
+            out[:, 3] = 0.3 + 0.7 * t          # warm high
+            out[:, 4] = 0.5 - 0.2 * t
+            out[:, 5] = 1.0 - 0.8 * t          # cool low
+            self.server.broadcast(protocol.CH_DEPTH, protocol.pack_xyzrgb(out))
+
     async def imu_loop(self):
         """IMU at 10 Hz from trajectory derivatives: gyro = quaternion rate,
         accel = gravity + centripetal-ish wobble + noise."""
@@ -402,6 +427,7 @@ class MockBridge:
             self.path_loop(),
             self.velocity_loop(),
             self.imu_loop(),
+            self.depth_loop(),
             self.mission_loop(),
             self.objects_loop(),
             self.chatter_loop(),

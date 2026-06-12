@@ -11,6 +11,7 @@ import { useConnectionStore } from '../../stores/connectionStore'
 import { useTelemetryStore } from '../../stores/telemetryStore'
 import { scanFeed } from '../../stores/scanFeed'
 import { scanLowFeed } from '../../stores/scanLowFeed'
+import { depthFeed } from '../../stores/depthFeed'
 import { poseFeed } from '../../stores/poseFeed'
 import { gridFeed } from '../../stores/gridFeed'
 import { pathFeed } from '../../stores/pathFeed'
@@ -129,6 +130,9 @@ class Connection {
         break
       case CH.SCAN_LOW:
         if (frame.points) scanLowFeed.push(frame.points, frame.seq)
+        break
+      case CH.DEPTH:
+        if (frame.points) depthFeed.push(frame.points, frame.seq)
         break
       case CH.OBJECTS: {
         const data = frame.data as { objects: Parameters<ObjectsSetter>[0] }

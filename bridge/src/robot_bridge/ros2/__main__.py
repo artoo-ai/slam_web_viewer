@@ -41,6 +41,7 @@ from .converters import (
     occupancygrid_to_grid,
     odometry_to_pose,
     pointcloud2_to_xyzi,
+    pointcloud2_to_xyzrgb,
     stamp_to_seconds,
     transform_xyzi,
 )
@@ -93,6 +94,8 @@ class Ros2Bridge:
             channels += ["scan", "map"]
         if args.scan_low_topic:
             channels.append("scan_low")
+        if args.depth_topic:
+            channels.append("depth")
         if args.detections_topic:
             channels.append("objects")
         self.mapacc = MapAccumulator(voxel_size=args.map_voxel)
@@ -225,6 +228,11 @@ class Ros2Bridge:
             node.create_subscription(LaserScanLow, self.args.scan_low_topic,
                                      self.on_scan_low, _qos_low)
             subscribed.append(self.args.scan_low_topic)
+        if self.args.depth_topic:
+            from rclpy.qos import qos_profile_sensor_data
+            node.create_subscription(PointCloud2, self.args.depth_topic,
+                                     self.on_depth, qos_profile_sensor_data)
+            subscribed.append(self.args.depth_topic)
         if self.args.rosout:
             from rcl_interfaces.msg import Log as RclLog
             node.create_subscription(RclLog, "/rosout", self.on_rosout, 50)
@@ -312,6 +320,28 @@ class Ros2Bridge:
         xyzi = pointcloud2_to_xyzi(msg, decimate=self.args.decimate,
                                    intensity_scale=self.args.intensity_scale)
         self._publish_scan(xyzi, msg.header)
+
+    def on_depth(self, msg) -> None:
+        """RealSense depth/color cloud -> depth channel (rate-limited,
+        decimated, TF'd to map like scans; raw sensor frame in bench mode)."""
+        now = time.monotonic()
+        if now - getattr(self, "_last_depth_t", 0.0) < 1.0 / self.args.depth_hz:
+            return
+        self._last_depth_t = now
+        try:
+            pts = pointcloud2_to_xyzrgb(msg, decimate=self.args.depth_decimate)
+        except ValueError as e:
+            if not getattr(self, "_depth_warned", False):
+                self._depth_warned = True
+                log.warning("depth cloud unusable: %s", e)
+            return
+        frame = msg.header.frame_id
+        if frame and frame != "map":
+            tq = self._lookup_map_tf(frame, msg.header.stamp)
+            if tq is not None:
+                pts = transform_xyzi(pts, *tq)  # transforms cols 0-2, rest pass through
+        self._post(protocol.CH_DEPTH, protocol.pack_xyzrgb(pts),
+                   stamp_to_seconds(msg.header.stamp))
 
     def on_laserscan(self, msg) -> None:
         self._publish_scan(laserscan_to_xyzi(msg), msg.header)
@@ -950,6 +980,14 @@ def main() -> None:
     parser.add_argument("--scan-low-topic", default=None,
                         help="sensor_msgs/LaserScan low obstacle band "
                              "(preset 2d: /scan_low; '' disables)")
+    parser.add_argument("--depth-topic",
+                        default="/d435_front/camera/depth/color/points",
+                        help="RealSense xyzrgb PointCloud2 ('' disables; needs "
+                             "pointcloud.enable=true on the camera node)")
+    parser.add_argument("--depth-hz", type=float, default=5.0,
+                        help="depth cloud forward rate")
+    parser.add_argument("--depth-decimate", type=int, default=8,
+                        help="keep every k-th depth point (organized 848x480 is huge)")
     parser.add_argument("--scan2d-topic", default="/scan",
                         help="2D LaserScan to watch (rf2o's input; '' disables)")
     parser.add_argument("--rosout", action="store_true", default=True,

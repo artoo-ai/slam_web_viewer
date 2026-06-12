@@ -46,6 +46,36 @@ def pointcloud2_to_xyzi(msg, *, decimate: int = 1,
     return np.ascontiguousarray(out)
 
 
+def pointcloud2_to_xyzrgb(msg, *, decimate: int = 1) -> np.ndarray:
+    """RealSense /depth/color/points PointCloud2 -> float32 (N, 6) [x,y,z,r,g,b].
+
+    Expects FLOAT32 x/y/z plus the packed-float 'rgb' field (REP-117 style:
+    uint32 0x00RRGGBB reinterpreted as float32). Colors normalized 0..1;
+    non-finite points dropped.
+    """
+    fields = {f.name: f for f in msg.fields}
+    for name in ("x", "y", "z", "rgb"):
+        if name not in fields:
+            raise ValueError(f"PointCloud2 missing field {name!r}")
+
+    n_points = msg.width * msg.height
+    raw = np.frombuffer(bytes(msg.data), dtype=np.uint8).reshape(n_points, msg.point_step)
+    if decimate > 1:
+        raw = raw[::decimate]
+
+    out = np.empty((len(raw), 6), dtype=np.float32)
+    for i, name in enumerate(("x", "y", "z")):
+        offset = fields[name].offset
+        out[:, i] = raw[:, offset:offset + 4].copy().view(np.float32)[:, 0]
+    rgb_off = fields["rgb"].offset
+    packed = raw[:, rgb_off:rgb_off + 4].copy().view(np.uint32)[:, 0]
+    out[:, 3] = ((packed >> 16) & 0xFF).astype(np.float32) / 255.0
+    out[:, 4] = ((packed >> 8) & 0xFF).astype(np.float32) / 255.0
+    out[:, 5] = (packed & 0xFF).astype(np.float32) / 255.0
+    out = out[np.isfinite(out[:, :3]).all(axis=1)]
+    return np.ascontiguousarray(out)
+
+
 def laserscan_to_xyzi(msg, *, default_intensity: float = 0.5) -> np.ndarray:
     """Convert a sensor_msgs/msg/LaserScan (RPLidar, Neato, …) to float32 (N, 4)
     [x, y, 0, intensity] in the scan frame. Out-of-range/inf returns dropped."""

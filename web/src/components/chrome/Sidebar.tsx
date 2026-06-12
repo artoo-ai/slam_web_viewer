@@ -19,6 +19,8 @@ const LAYERS: { key: keyof LayerVisibility; label: string; tip: string }[] = [
     tip: 'The latest single LiDAR sweep (~1 frame). Shows what the sensor sees RIGHT NOW. If this lags or tears during rotation, odometry is struggling to keep up.' },
   { key: 'scan_low', label: 'Low Obstacles',
     tip: 'The 0.05–0.15 m slice (/scan_low) feeding the costmap’s low_obstacle_layer — dog bowls, shoes, anything below the main scan band. Red dots hugging the floor. If the robot swerves around “nothing”, this layer shows the something.' },
+  { key: 'depth_points', label: 'Depth Camera',
+    tip: 'True-color point cloud from the depth camera (D435) — the camera’s view in 3D, complementing the LiDAR. Needs pointcloud.enable=true on the camera node (Remote Param: node d435_front/camera).' },
   { key: 'map_points', label: 'Map Points',
     tip: 'Accumulated 3D map: every voxel the LiDAR has ever seen (10 cm dedup). This is SLAM’s long-term memory. Ghost/double walls here mean the odometry drifted or smeared.' },
   { key: 'trajectory', label: 'Trajectory',

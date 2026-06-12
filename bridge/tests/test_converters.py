@@ -77,6 +77,27 @@ def test_pointcloud2_missing_field():
         pointcloud2_to_xyzi(cloud)
 
 
+def test_pointcloud2_to_xyzrgb():
+    from robot_bridge.ros2.converters import pointcloud2_to_xyzrgb
+    # 2 points, point_step 20: x,y,z float32 + rgb packed float at offset 16
+    pts_xyz = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
+    packed = np.array([(255 << 16) | (128 << 8) | 0,   # red-ish
+                       (0 << 16) | (64 << 8) | 255],   # blue-ish
+                      dtype=np.uint32)
+    data = np.zeros((2, 20), dtype=np.uint8)
+    data[:, :12] = pts_xyz.view(np.uint8).reshape(2, 12)
+    data[:, 16:20] = packed.view(np.uint8).reshape(2, 4)
+    msg = SimpleNamespace(
+        fields=[make_field("x", 0), make_field("y", 4), make_field("z", 8),
+                make_field("rgb", 16)],
+        width=2, height=1, point_step=20, data=data.tobytes())
+    out = pointcloud2_to_xyzrgb(msg)
+    np.testing.assert_array_equal(out[:, :3], pts_xyz)
+    np.testing.assert_allclose(out[0, 3:], [1.0, 128 / 255, 0.0], atol=1e-6)
+    np.testing.assert_allclose(out[1, 3:], [0.0, 64 / 255, 1.0], atol=1e-6)
+    assert out.dtype == np.float32
+
+
 def test_transform_xyzi_rotation_translation():
     from robot_bridge.ros2.converters import transform_xyzi
     import math
