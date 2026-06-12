@@ -55,27 +55,97 @@ export function BboxReadout() {
   )
 }
 
-/** Camera dock: SJY-style slim strip flush against the bottom-right edge —
- *  small thumbnails only, never floating windows. Streams come from
- *  hello.cameras (1-4); missing slots render as dark placeholders. */
-function CamSlot({ url, name }: { url: string; name: string }) {
-  const [failed, setFailed] = useState(false)
-  const [attempt, setAttempt] = useState(0)
+/** Camera dock: SJY-style strip flush against the bottom-right edge — never
+ *  floating windows. Streams come from hello.cameras (1-4). The MJPEG stream
+ *  is consumed via fetch() rather than <img src>: a plain img freezes on the
+ *  last frame forever when the TCP stream dies (flaky robot WiFi) with no
+ *  error event — reading it ourselves gives stall detection + reconnect. */
+
+const SOI = [0xff, 0xd8] // JPEG start marker
+const EOI = [0xff, 0xd9] // JPEG end marker
+
+function findMarker(buf: Uint8Array, marker: number[], from: number): number {
+  for (let i = from; i < buf.length - 1; i++) {
+    if (buf[i] === marker[0] && buf[i + 1] === marker[1]) return i
+  }
+  return -1
+}
+
+function useMjpeg(url: string) {
+  const [frameUrl, setFrameUrl] = useState<string | null>(null)
+  const [ageS, setAgeS] = useState(Infinity)
+
   useEffect(() => {
-    if (failed) {
-      const t = setTimeout(() => {
-        setFailed(false)
-        setAttempt((a) => a + 1)
-      }, 10_000)
-      return () => clearTimeout(t)
+    let stop = false
+    let lastFrame = 0
+    let currentUrl: string | null = null
+    const controller = new AbortController()
+
+    const ageTimer = setInterval(
+      () => setAgeS(lastFrame ? (performance.now() - lastFrame) / 1000 : Infinity),
+      1000,
+    )
+
+    const run = async () => {
+      while (!stop) {
+        try {
+          const res = await fetch(url, { signal: controller.signal })
+          const reader = res.body?.getReader()
+          if (!reader) throw new Error('no body')
+          let buf = new Uint8Array(0)
+          for (;;) {
+            const { value, done } = await reader.read()
+            if (done || stop) break
+            const merged = new Uint8Array(buf.length + value.length)
+            merged.set(buf)
+            merged.set(value, buf.length)
+            buf = merged
+            for (;;) {
+              const start = findMarker(buf, SOI, 0)
+              if (start < 0) break
+              const end = findMarker(buf, EOI, start + 2)
+              if (end < 0) break
+              const jpeg = buf.slice(start, end + 2)
+              buf = buf.slice(end + 2)
+              const next = URL.createObjectURL(new Blob([jpeg], { type: 'image/jpeg' }))
+              if (currentUrl) URL.revokeObjectURL(currentUrl)
+              currentUrl = next
+              lastFrame = performance.now()
+              setFrameUrl(next)
+            }
+            if (buf.length > 2_000_000) buf = new Uint8Array(0) // corrupt stream guard
+          }
+        } catch {
+          /* connection refused / dropped — fall through to retry */
+        }
+        if (!stop) await new Promise((r) => setTimeout(r, 2000))
+      }
     }
-  }, [failed])
+    void run()
+    return () => {
+      stop = true
+      controller.abort()
+      clearInterval(ageTimer)
+      if (currentUrl) URL.revokeObjectURL(currentUrl)
+    }
+  }, [url])
+
+  return { frameUrl, ageS }
+}
+
+function CamSlot({ url, name }: { url: string; name: string }) {
+  const { frameUrl, ageS } = useMjpeg(url)
+  const [big, setBig] = useState(false)
+  const stalled = ageS > 3
   return (
-    <div className="cam-slot" title={`camera "${name}" — ${url}`}>
-      {!failed && (
-        <img key={attempt} src={url} alt={name} onError={() => setFailed(true)} />
-      )}
-      <span className="cam-slot-label">{failed ? `${name}: offline` : name}</span>
+    <div className={`cam-slot ${big ? 'cam-slot-big' : ''}`}
+         onClick={() => setBig((b) => !b)}
+         title={`camera "${name}" — ${url}\nclick to ${big ? 'shrink' : 'enlarge'}`}>
+      {frameUrl && <img src={frameUrl} alt={name} />}
+      <span className="cam-slot-label">
+        {name}
+        {stalled && <em> · {frameUrl ? `stalled ${ageS < 999 ? ageS.toFixed(0) + 's' : ''} — reconnecting` : 'no stream'}</em>}
+      </span>
     </div>
   )
 }
