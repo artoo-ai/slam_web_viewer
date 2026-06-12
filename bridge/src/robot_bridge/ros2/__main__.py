@@ -828,7 +828,10 @@ class Ros2Bridge:
                 self._ros_jobs.put(self._ros_get_params)
             case "map_save":
                 try:
-                    info = self.mapacc.save_qpc(
+                    # compression can take seconds on a big map — keep the
+                    # event loop (and all streaming) alive while it runs
+                    info = await asyncio.to_thread(
+                        self.mapacc.save_qpc,
                         cmd.get("path") or f"maps/map_{int(time.time())}.qpc")
                     await self.server.reply_ack(client, {
                         "cmd": "map_save_ack", "id": cmd.get("id", 0), "ok": True, **info})

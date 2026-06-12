@@ -214,8 +214,9 @@ class Connection {
     return () => set.delete(cb)
   }
 
-  /** Send a command; resolves with its cmd_ack (or null if not connected). */
-  sendCommand(command: CommandInput): Promise<CmdAckPayload | null> {
+  /** Send a command; resolves with its cmd_ack (or null if not connected /
+   *  timed out). Slow commands (map_save compresses on the robot) get longer. */
+  sendCommand(command: CommandInput, timeoutMs = 5000): Promise<CmdAckPayload | null> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return Promise.resolve(null)
     const id = this.nextCmdId++
     const bytes = encodeCommand({ ...command, id } as Command)
@@ -224,7 +225,7 @@ class Connection {
       this.pendingAcks.set(id, resolve)
       setTimeout(() => {
         if (this.pendingAcks.delete(id)) resolve(null)
-      }, 5000)
+      }, timeoutMs)
     })
   }
 }

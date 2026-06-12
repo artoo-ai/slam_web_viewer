@@ -79,7 +79,7 @@ function useMjpeg(url: string) {
     let stop = false
     let lastFrame = 0
     let currentUrl: string | null = null
-    const controller = new AbortController()
+    let attempt: AbortController | null = null
 
     const ageTimer = setInterval(
       () => setAgeS(lastFrame ? (performance.now() - lastFrame) / 1000 : Infinity),
@@ -88,8 +88,15 @@ function useMjpeg(url: string) {
 
     const run = async () => {
       while (!stop) {
+        attempt = new AbortController()
+        const started = performance.now()
+        // true stall watchdog: a connection that stays open but sends nothing
+        // (bridge lost its camera) hangs read() forever — force a re-dial
+        const watchdog = setInterval(() => {
+          if (performance.now() - Math.max(lastFrame, started) > 5000) attempt?.abort()
+        }, 1000)
         try {
-          const res = await fetch(url, { signal: controller.signal })
+          const res = await fetch(url, { signal: attempt.signal })
           const reader = res.body?.getReader()
           if (!reader) throw new Error('no body')
           let buf = new Uint8Array(0)
@@ -116,7 +123,9 @@ function useMjpeg(url: string) {
             if (buf.length > 2_000_000) buf = new Uint8Array(0) // corrupt stream guard
           }
         } catch {
-          /* connection refused / dropped — fall through to retry */
+          /* connection refused / dropped / watchdog abort — retry */
+        } finally {
+          clearInterval(watchdog)
         }
         if (!stop) await new Promise((r) => setTimeout(r, 2000))
       }
@@ -124,7 +133,7 @@ function useMjpeg(url: string) {
     void run()
     return () => {
       stop = true
-      controller.abort()
+      attempt?.abort()
       clearInterval(ageTimer)
       if (currentUrl) URL.revokeObjectURL(currentUrl)
     }

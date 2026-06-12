@@ -113,7 +113,8 @@ class MockBridge:
                     self.active_goal, cmd.get("x", 0.0), cmd.get("y", 0.0)))
             case "map_save":
                 try:
-                    info = self.mapacc.save_qpc(
+                    info = await asyncio.to_thread(
+                        self.mapacc.save_qpc,
                         cmd.get("path") or f"maps/map_{int(time.time())}.qpc")
                     await self.server.reply_ack(client, {
                         "cmd": "map_save_ack", "id": cmd.get("id", 0), "ok": True, **info})

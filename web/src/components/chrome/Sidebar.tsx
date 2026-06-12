@@ -4,6 +4,9 @@ import { useViewerParams, type FollowMode } from '../../stores/viewerParamsStore
 import { useBookmarks } from '../../stores/bookmarksStore'
 import { useRecStore } from '../../stores/recStore'
 import { useSendCommand } from '../../hooks/useSendCommand'
+import { connection } from '../../lib/transport/connection'
+
+const connectionSend = connection.sendCommand.bind(connection)
 import { takeScreenshot } from '../../lib/viewportRefs'
 import type { ParamAck } from '../../types/channels'
 import './chrome.css'
@@ -45,7 +48,8 @@ export function Sidebar() {
   const [mapSaved, setMapSaved] = useState<string | null>(null)
 
   const saveMap = async () => {
-    const reply = (await send({ cmd: 'map_save' })) as
+    setMapSaved('saving…')
+    const reply = (await connectionSend({ cmd: 'map_save' }, 30_000)) as
       | { cmd: string; ok: boolean; path?: string; points?: number; bytes?: number; message?: string }
       | null
     if (!reply) setMapSaved('no reply')
