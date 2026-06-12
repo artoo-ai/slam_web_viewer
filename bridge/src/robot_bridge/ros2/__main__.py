@@ -756,7 +756,9 @@ class Ros2Bridge:
         if not cli.wait_for_service(timeout_sec=1.0):
             self._node.destroy_client(cli)
             self._reply_threadsafe(client, protocol.param_ack_payload(
-                cmd_id, node_name, {}, params))
+                cmd_id, node_name, {}, params,
+                {k: f"{srv} not available — is the node running / name right?"
+                 for k in params}))
             self.log_clients("warn", f"set_param: {srv} not available")
             return
         request = SetParameters.Request(
@@ -764,21 +766,28 @@ class Ros2Bridge:
         future = cli.call_async(request)
 
         def done(f):
-            accepted, rejected = {}, {}
+            accepted, rejected, reasons = {}, {}, {}
             try:
                 results = f.result().results
                 for (name, value), result in zip(params.items(), results):
-                    (accepted if result.successful else rejected)[name] = value
+                    if result.successful:
+                        accepted[name] = value
+                    else:
+                        rejected[name] = value
+                        if result.reason:
+                            reasons[name] = result.reason
                 if rejected:
-                    self.log_clients("warn", f"set_param {node_name}: rejected {rejected}")
+                    detail = "; ".join(f"{k}: {v}" for k, v in reasons.items()) or "no reason given"
+                    self.log_clients("warn", f"set_param {node_name} rejected — {detail}")
                 else:
                     self.log_clients("info", f"set_param {node_name}: {accepted}")
             except Exception as e:  # noqa: BLE001
                 rejected = params
+                reasons = {k: str(e) for k in params}
                 self.log_clients("warn", f"set_param {node_name} failed: {e}")
             self._node.destroy_client(cli)
             self._reply_threadsafe(client, protocol.param_ack_payload(
-                cmd_id, node_name, accepted, rejected))
+                cmd_id, node_name, accepted, rejected, reasons))
 
         future.add_done_callback(done)
 

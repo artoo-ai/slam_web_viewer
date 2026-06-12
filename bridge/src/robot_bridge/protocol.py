@@ -281,9 +281,13 @@ def imu_payload(*, angular_vel: tuple[float, float, float],
     return payload
 
 
-def param_ack_payload(cmd_id: int, node: str, accepted: dict, rejected: dict) -> dict:
-    return {"cmd": "param_ack", "id": cmd_id, "node": node,
-            "accepted": accepted, "rejected": rejected}
+def param_ack_payload(cmd_id: int, node: str, accepted: dict, rejected: dict,
+                      reasons: dict | None = None) -> dict:
+    payload = {"cmd": "param_ack", "id": cmd_id, "node": node,
+               "accepted": accepted, "rejected": rejected}
+    if reasons:
+        payload["reasons"] = reasons  # param -> node's rejection reason string
+    return payload
 
 
 def pong_payload(cmd_id: int, t: float) -> dict:

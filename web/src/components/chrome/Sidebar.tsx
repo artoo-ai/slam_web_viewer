@@ -86,9 +86,13 @@ export function Sidebar() {
       Number.isFinite(num) && pvalue.trim() !== '' ? num : pvalue
     const reply = (await send({
       cmd: 'set_param', node: node.trim(), params: { [pname.trim()]: parsed },
-    })) as ParamAck | null
+    })) as (ParamAck & { reasons?: Record<string, string> }) | null
     if (!reply) setAck('timeout')
-    else setAck(Object.keys(reply.accepted ?? {}).length ? 'accepted' : 'rejected')
+    else if (Object.keys(reply.accepted ?? {}).length) setAck('accepted')
+    else {
+      const reason = reply.reasons?.[pname.trim()]
+      setAck(reason ? `rejected — ${reason}` : 'rejected')
+    }
   }
 
   return (
@@ -219,7 +223,13 @@ export function Sidebar() {
         <input className="sb-input" placeholder="value" value={pvalue} onChange={(e) => setPvalue(e.target.value)} />
         <div className="sb-row">
           <button className="sb-btn" disabled={!pname.trim()} onClick={() => void sendParam()}>Send</button>
-          {ack && <span className={`sb-ack sb-ack-${ack}`}>{ack}</span>}
+          {ack && (
+            <span className={`sb-ack sb-ack-${
+              ack.startsWith('accepted') ? 'accepted' :
+              ack.startsWith('timeout') ? 'timeout' : 'rejected'}`}>
+              {ack}
+            </span>
+          )}
         </div>
       </div>
 
