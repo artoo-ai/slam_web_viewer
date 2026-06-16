@@ -84,12 +84,33 @@ ROSOUT_NODE_LEVELS = {
 }
 ROSOUT_MAX_HZ = 5.0  # global rate cap so a log storm can't flood the channel
 
+# Odometry between-samples jump beyond this = divergence (rf2o lost track) or a
+# SLAM correction — surfaced as the `jump` flag on the odom diag.
+ODOM_JUMP_M = 0.5
+
+# Nav2 behavior-tree leaves that mean a recovery is running. A transition INTO
+# RUNNING for any of these increments the recovery counter.
+RECOVERY_NODES = ("Spin", "BackUp", "Wait", "DriveOnHeading",
+                  "ClearEntireCostmap", "ClearCostmapAroundRobot",
+                  "ClearCostmap", "RecoveryNode", "RoundRobinRecovery")
+
+
+def _rtabmap_msgs_available() -> bool:
+    """True if rtabmap_msgs is importable (only when RTAB-Map is installed).
+    Used to decide whether to advertise rtabmap_diag in the hello channels."""
+    import importlib.util
+    try:
+        return importlib.util.find_spec("rtabmap_msgs") is not None
+    except (ImportError, ValueError):
+        return False
+
 
 class Ros2Bridge:
     def __init__(self, args: argparse.Namespace):
         self.args = args
         channels = ["pose", "occupancy_grid", "stats", "log", "nav_status",
-                    "nav_path", "velocity", "imu", "mission", "node_params"]
+                    "nav_path", "velocity", "imu", "mission", "node_params",
+                    "nav2_diag"]
         if args.scan_topic:
             channels += ["scan", "map"]
         if args.scan_low_topic:
@@ -98,6 +119,15 @@ class Ros2Bridge:
             channels.append("depth")
         if args.detections_topic:
             channels.append("objects")
+        # per-component diagnostics — advertised by stack so the viewer can show
+        # the other stack's tabs as "inactive — not in this stack" (nav2_diag is
+        # advertised always: Nav2 can run under either stack).
+        if args.stack == "2d":
+            channels += ["rf2o_diag", "slam_toolbox_diag"]
+        elif args.stack == "3d":
+            channels.append("fastlio_diag")
+            if _rtabmap_msgs_available():
+                channels.append("rtabmap_diag")
         self.mapacc = MapAccumulator(voxel_size=args.map_voxel)
         # semantic object memory: cluster detections by label+position
         self.objects: list[dict] = []
@@ -142,6 +172,36 @@ class Ros2Bridge:
         self.scan2d_count = 0
         self._scan2d_last = 0
         self._last_map_odom: tuple[float, float, float] | None = None
+        self._map_correction: dict | None = None  # latest map->odom delta
+
+        # -- per-component diagnostics state (written by ROS thread) ----------
+        # odom (rf2o 2d / fastlio 3d): rate from a frame counter, latest pose/vel
+        self.odom_frames = 0
+        self._odom_frames_last = 0
+        self.odom_pose = (0.0, 0.0, 0.0)   # x, y, yaw
+        self.odom_cov_trace: float | None = None
+        self._last_odom_t = 0.0            # monotonic; 0 = none yet
+        self.odom_jump = False
+        # slam_toolbox: last map dims + pose-graph counts
+        self.map_dims: tuple[int, int, float] | None = None  # (w, h, res)
+        self._map_updates_last = 0
+        self._graph_nodes: int | None = None
+        self._graph_edges: int | None = None
+        # nav2: BT leaf + recovery counter + plan length
+        self._bt_node: str | None = None
+        self._nav2_recoveries = 0
+        self._nav2_last_recovery: str | None = None
+        self._plan_poses = 0
+        # rtabmap: from /rtabmap/info, event-driven (rate-limited)
+        self._rtab_loop_total = 0
+        self._rtab_loop_last: int | None = None
+        self._rtab_proximity = 0
+        self._rtab_ref_id = 0
+        self._rtab_proc_ms: float | None = None
+        self._rtab_wm: int | None = None
+        self._rtab_words: int | None = None
+        self._rtab_loc_t = 0.0
+        self._rtab_last_emit = 0.0
 
         # camera
         self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
@@ -237,6 +297,36 @@ class Ros2Bridge:
             from rcl_interfaces.msg import Log as RclLog
             node.create_subscription(RclLog, "/rosout", self.on_rosout, 50)
             subscribed.append("/rosout")
+        # -- per-component diagnostics subscriptions -------------------------
+        # slam_toolbox pose-graph (2d): node/edge counts from the marker array
+        if self.args.stack == "2d" and self.args.slam_graph_topic:
+            from visualization_msgs.msg import MarkerArray
+            node.create_subscription(MarkerArray, self.args.slam_graph_topic,
+                                     self.on_slam_graph, 1)
+            subscribed.append(self.args.slam_graph_topic)
+        # Nav2 behavior-tree log: active leaf + recovery detection (optional msg)
+        if self.args.bt_log_topic:
+            try:
+                from nav2_msgs.msg import BehaviorTreeLog
+                node.create_subscription(BehaviorTreeLog, self.args.bt_log_topic,
+                                         self.on_bt_log, 10)
+                subscribed.append(self.args.bt_log_topic)
+            except ImportError:
+                log.warning("nav2_msgs not available — BT-log diagnostics off")
+        # RTAB-Map /rtabmap/info (3d): loop closures, timing, memory (optional msg)
+        if self.args.stack == "3d" and self.args.rtabmap_info_topic:
+            try:
+                from rtabmap_msgs.msg import Info as RtabInfo
+                node.create_subscription(RtabInfo, self.args.rtabmap_info_topic,
+                                         self.on_rtabmap_info, 10)
+                subscribed.append(self.args.rtabmap_info_topic)
+                if self.args.rtabmap_loc_topic:
+                    from geometry_msgs.msg import PoseWithCovarianceStamped
+                    node.create_subscription(
+                        PoseWithCovarianceStamped, self.args.rtabmap_loc_topic,
+                        self.on_rtabmap_loc, 10)
+            except ImportError:
+                log.warning("rtabmap_msgs not available — rtabmap diagnostics off")
         # status of goals sent by OTHER nodes (explore) to Nav2 — the GUI's own
         # goals already report via the action client; this covers the rest
         from action_msgs.msg import GoalStatusArray
@@ -431,6 +521,10 @@ class Ros2Bridge:
             return
         d = math.hypot(x - prev[0], y - prev[1])
         dyaw = abs(math.atan2(math.sin(yaw - prev[2]), math.cos(yaw - prev[2])))
+        # record the per-tick map->odom shift for the slam_toolbox diag (how
+        # much SLAM is correcting odometry drift right now)
+        self._map_correction = {"dist_m": round(d, 3),
+                                "yaw_deg": round(math.degrees(dyaw), 2)}
         if d > CORRECTION_DIST_M or dyaw > CORRECTION_YAW_RAD:
             self.mapacc.reset()
             # status channel is reliable/ordered — a droppable clear marker
@@ -446,9 +540,19 @@ class Ros2Bridge:
             step = math.hypot(p[0] - self.last_xy[0], p[1] - self.last_xy[1])
             if step < 1.0:  # ignore SLAM-correction jumps
                 self.distance_m += step
+            self.odom_jump = step > ODOM_JUMP_M  # divergence / correction
         self.last_xy = (p[0], p[1])
         self.odom_vel = (float(msg.twist.twist.linear.x),
                          float(msg.twist.twist.angular.z))
+        # odom diagnostics: yaw, covariance trace, rate (frame counter), age
+        yaw = math.atan2(2.0 * (q[3] * q[2] + q[0] * q[1]),
+                         1.0 - 2.0 * (q[1] * q[1] + q[2] * q[2]))
+        self.odom_pose = (p[0], p[1], yaw)
+        cov = msg.pose.covariance
+        tr = float(cov[0] + cov[7] + cov[35])  # xx + yy + yaw-yaw
+        self.odom_cov_trace = round(tr, 4) if abs(tr) > 1e-9 else None
+        self.odom_frames += 1
+        self._last_odom_t = time.monotonic()
         self._post(protocol.CH_POSE, protocol.pose_payload(p, q),
                    stamp_to_seconds(msg.header.stamp))
 
@@ -642,12 +746,14 @@ class Ros2Bridge:
             poses[i] = (ps.pose.position.x, ps.pose.position.y,
                         math.atan2(2.0 * (o.w * o.z + o.x * o.y),
                                    1.0 - 2.0 * (o.y * o.y + o.z * o.z)))
+        self._plan_poses = len(msg.poses)
         self._post(protocol.CH_NAV_PATH, protocol.nav_path_payload(poses),
                    stamp_to_seconds(msg.header.stamp))
 
     def on_map(self, msg) -> None:
         grid = occupancygrid_to_grid(msg)
         self.map_updates += 1
+        self.map_dims = (grid["width"], grid["height"], grid["resolution"])
         known = int((grid["cells"] != -1).sum())
         self.map_known_m2 = known * grid["resolution"] ** 2
         if self.map_updates == 1 or self.map_updates % 5 == 0:
@@ -657,6 +763,102 @@ class Ros2Bridge:
         self._post(protocol.CH_OCCUPANCY_GRID,
                    protocol.occupancy_grid_payload(**grid),
                    stamp_to_seconds(msg.header.stamp))
+
+    # -- per-component diagnostics callbacks (ROS thread) --------------------
+
+    def on_slam_graph(self, msg) -> None:
+        """slam_toolbox /graph_visualization MarkerArray -> node/edge counts.
+
+        Heuristic (the marker layout varies by version): SPHERE_LIST/POINTS
+        markers carry pose-graph vertices as points; LINE_LIST/LINE_STRIP carry
+        the constraint edges. Falls back to counting non-text markers. The trend
+        (is the graph growing?) matters more than an exact count.
+        """
+        nodes = 0
+        edge_pts = 0
+        for m in msg.markers:
+            if m.type in (7, 8):        # SPHERE_LIST, POINTS
+                nodes += len(m.points)
+            elif m.type in (4, 5):      # LINE_STRIP, LINE_LIST
+                edge_pts += len(m.points)
+            elif m.type == 2:           # one SPHERE marker per node
+                nodes += 1
+        if nodes == 0:
+            nodes = sum(1 for m in msg.markers if m.type != 9)  # exclude TEXT
+        self._graph_nodes = nodes
+        self._graph_edges = edge_pts // 2 if edge_pts else None
+
+    def on_bt_log(self, msg) -> None:
+        """Nav2 nav2_msgs/BehaviorTreeLog -> active leaf + recovery counter.
+
+        A node transitioning INTO RUNNING (previous != RUNNING) is the active
+        leaf; if it's a recovery node, bump the recovery counter once per entry.
+        """
+        for ev in msg.event_log:
+            cur = getattr(ev, "current_status", "")
+            if cur != "RUNNING":
+                continue
+            name = getattr(ev, "node_name", "")
+            self._bt_node = name
+            if getattr(ev, "previous_status", "") != "RUNNING" and \
+                    any(r in name for r in RECOVERY_NODES):
+                self._nav2_recoveries += 1
+                self._nav2_last_recovery = name
+
+    @staticmethod
+    def _stat(stats: dict, keys, *, as_int: bool = False):
+        """First present key from `keys` in the rtabmap stats dict, or None."""
+        for k in keys:
+            if k in stats:
+                try:
+                    return int(float(stats[k])) if as_int else round(float(stats[k]), 1)
+                except (TypeError, ValueError):
+                    return None
+        return None
+
+    def on_rtabmap_info(self, msg) -> None:
+        """rtabmap_msgs/Info -> loop closures, processing time, memory.
+
+        Field names differ across rtabmap versions/distros (refId vs ref_id),
+        so read them defensively; the stats dict keys vary too — best-effort.
+        Emission is rate-limited to 2 Hz.
+        """
+        self._rtab_ref_id = int(getattr(msg, "ref_id", getattr(msg, "refId", 0)) or 0)
+        loop_id = int(getattr(msg, "loop_closure_id",
+                              getattr(msg, "loopClosureId", 0)) or 0)
+        if loop_id > 0:
+            self._rtab_loop_total += 1
+            self._rtab_loop_last = loop_id
+        prox = int(getattr(msg, "proximity_detection_id",
+                           getattr(msg, "proximityDetectionId", 0)) or 0)
+        if prox > 0:
+            self._rtab_proximity += 1
+        try:
+            keys = list(getattr(msg, "stats_keys", []) or [])
+            vals = list(getattr(msg, "stats_values", []) or [])
+            stats = dict(zip(keys, vals))
+            self._rtab_proc_ms = self._stat(stats, ("Timing/Total/ms", "Timing/total/ms"))
+            self._rtab_wm = self._stat(stats, ("Memory/Working_memory_size/",
+                                               "Memory/Working_memory_size"), as_int=True)
+            self._rtab_words = self._stat(stats, ("Keypoint/Current_frame/words",
+                                                  "Keypoint/Indexed_words/"), as_int=True)
+        except Exception:  # noqa: BLE001 — stats are best-effort, never fatal
+            pass
+        now = time.monotonic()
+        if now - self._rtab_last_emit >= 0.5:
+            self._rtab_last_emit = now
+            loc = None
+            if self._rtab_loc_t:
+                loc = (now - self._rtab_loc_t) < 3.0
+            self._post(protocol.CH_RTABMAP_DIAG, protocol.rtabmap_diag_payload(
+                loop_total=self._rtab_loop_total, loop_last_id=self._rtab_loop_last,
+                proximity=self._rtab_proximity, ref_id=self._rtab_ref_id,
+                proc_ms=self._rtab_proc_ms, wm_size=self._rtab_wm,
+                words=self._rtab_words, localized=loc))
+
+    def on_rtabmap_loc(self, msg) -> None:
+        """A localization pose means rtabmap is localized (not just mapping)."""
+        self._rtab_loc_t = time.monotonic()
 
     # -- nav (jobs run on ROS thread; replies marshalled back to asyncio) ----
 
@@ -925,6 +1127,57 @@ class Ros2Bridge:
                 cmd_vx=round(cmd_vx, 3), cmd_wz=round(cmd_wz, 3),
                 odom_vx=round(odom_vx, 3), odom_wz=round(odom_wz, 3)))
 
+    async def diag_loop(self) -> None:
+        """Per-component diagnostics at 1 Hz (rtabmap emits event-driven from
+        its own Info callback). Computes odom rate from a frame counter and
+        routes it to rf2o (2d) or fastlio (3d); assembles slam_toolbox + nav2."""
+        while True:
+            await asyncio.sleep(1.0)
+            hz = float(self.odom_frames - self._odom_frames_last)
+            self._odom_frames_last = self.odom_frames
+            age = round(time.monotonic() - self._last_odom_t, 2) \
+                if self._last_odom_t else 999.0
+            odom = protocol.odom_diag_payload(
+                source="rf2o" if self.args.stack == "2d" else "fastlio",
+                hz=hz, pose=self.odom_pose, vel=self.odom_vel,
+                cov_trace=self.odom_cov_trace, jump=self.odom_jump, age_s=age)
+            if self.args.stack == "2d":
+                self.server.broadcast(protocol.CH_RF2O_DIAG, odom)
+                self._broadcast_slam_toolbox_diag()
+            elif self.args.stack == "3d":
+                self.server.broadcast(protocol.CH_FASTLIO_DIAG, odom)
+            self._broadcast_nav2_diag()
+
+    def _broadcast_slam_toolbox_diag(self) -> None:
+        map_info = None
+        if self.map_dims is not None:
+            w, h, res = self.map_dims
+            map_hz = float(self.map_updates - self._map_updates_last)
+            self._map_updates_last = self.map_updates
+            map_info = {"w": w, "h": h, "res": round(res, 3),
+                        "known_m2": round(self.map_known_m2, 1),
+                        "updates": self.map_updates, "update_hz": map_hz}
+        graph = None
+        if self._graph_nodes is not None:
+            graph = {"nodes": self._graph_nodes, "edges": self._graph_edges}
+        self.server.broadcast(
+            protocol.CH_SLAM_TOOLBOX_DIAG, protocol.slam_toolbox_diag_payload(
+                map_info=map_info, graph=graph,
+                correction=self._map_correction, mode=None))
+
+    def _broadcast_nav2_diag(self) -> None:
+        cvx, cwz = self.cmd_vel
+        if time.monotonic() - self.cmd_vel_t > 0.5:
+            cvx, cwz = 0.0, 0.0
+        state = self._ext_nav_state or \
+            ("navigating" if self._active_goal_id else "idle")
+        self.server.broadcast(protocol.CH_NAV2_DIAG, protocol.nav2_diag_payload(
+            state=state, bt_node=self._bt_node,
+            recoveries={"total": self._nav2_recoveries,
+                        "last": self._nav2_last_recovery},
+            plan_poses=self._plan_poses,
+            cmd={"vx": round(cvx, 3), "wz": round(cwz, 3)}, servers=None))
+
     async def stats_loop(self) -> None:
         while True:
             await asyncio.sleep(1.0)
@@ -950,6 +1203,7 @@ class Ros2Bridge:
             self.server.serve_forever(self.args.host, self.args.port),
             self.stats_loop(),
             self.velocity_loop(),
+            self.diag_loop(),
         ]
         if self.mjpeg is not None:
             loops.append(self.mjpeg.serve_forever(self.args.host, self.args.mjpeg_port))
@@ -999,6 +1253,16 @@ def main() -> None:
                         help="keep every k-th depth point (organized 848x480 is huge)")
     parser.add_argument("--scan2d-topic", default="/scan",
                         help="2D LaserScan to watch (rf2o's input; '' disables)")
+    # per-component diagnostics inputs (see DiagnosticsCard in the viewer)
+    parser.add_argument("--slam-graph-topic",
+                        default="/slam_toolbox/graph_visualization",
+                        help="slam_toolbox pose-graph MarkerArray ('' disables)")
+    parser.add_argument("--bt-log-topic", default="/behavior_tree_log",
+                        help="Nav2 nav2_msgs/BehaviorTreeLog ('' disables)")
+    parser.add_argument("--rtabmap-info-topic", default="/rtabmap/info",
+                        help="rtabmap_msgs/Info diagnostics ('' disables)")
+    parser.add_argument("--rtabmap-loc-topic", default="/rtabmap/localization_pose",
+                        help="RTAB-Map localization pose ('' disables)")
     parser.add_argument("--rosout", action="store_true", default=True,
                         help="forward filtered /rosout to the log channel")
     parser.add_argument("--no-rosout", dest="rosout", action="store_false")

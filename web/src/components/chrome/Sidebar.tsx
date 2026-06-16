@@ -113,6 +113,12 @@ export function Sidebar() {
             {label}
           </label>
         ))}
+        <label className="sb-check"
+               title="Per-component SLAM diagnostics card (bottom-left): one tab each for rf2o, slam_toolbox, nav2, rtabmap and fast-lio2 — isolate a problem to a single stage.">
+          <input type="checkbox" checked={layers.diagnostics}
+                 onChange={() => layers.toggle('diagnostics')} />
+          SLAM Diagnostics
+        </label>
       </div>
 
       <div className="sb-section">

@@ -22,6 +22,7 @@ import { useObjectsStore } from '../../stores/objectsStore'
 import { useMissionStore, type MissionPayload } from '../../stores/missionStore'
 import { useParamsAudit } from '../../stores/paramsAuditStore'
 import { stalenessFeed } from '../../stores/stalenessFeed'
+import { useDiagnosticsStore } from '../../stores/diagnosticsStore'
 import type {
   CmdAckPayload,
   DecodedFrame,
@@ -30,8 +31,12 @@ import type {
   LogPayload,
   NavPathPayload,
   NavStatusPayload,
+  Nav2DiagPayload,
   OccupancyGridPayload,
+  OdomDiagPayload,
   PosePayload,
+  RtabmapDiagPayload,
+  SlamToolboxDiagPayload,
   StatsPayload,
   StatusPayload,
   VelocityPayload,
@@ -162,6 +167,21 @@ class Connection {
         break
       case CH.IMU:
         imuFeed.push(frame.data as ImuPayload, frame.ts)
+        break
+      case CH.RF2O_DIAG:
+        useDiagnosticsStore.getState().setRf2o(frame.data as OdomDiagPayload)
+        break
+      case CH.FASTLIO_DIAG:
+        useDiagnosticsStore.getState().setFastlio(frame.data as OdomDiagPayload)
+        break
+      case CH.SLAM_TOOLBOX_DIAG:
+        useDiagnosticsStore.getState().setSlamToolbox(frame.data as SlamToolboxDiagPayload)
+        break
+      case CH.NAV2_DIAG:
+        useDiagnosticsStore.getState().setNav2(frame.data as Nav2DiagPayload)
+        break
+      case CH.RTABMAP_DIAG:
+        useDiagnosticsStore.getState().setRtabmap(frame.data as RtabmapDiagPayload)
         break
       case CH.HELLO:
         useConnectionStore.getState().setHello(frame.data as HelloPayload)

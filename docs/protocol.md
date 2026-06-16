@@ -53,6 +53,57 @@ Every message is a MessagePack map:
 | `velocity` | 10 Hz | map `{ "cmd": { "vx": float, "wz": float }, "odom": { "vx": float, "wz": float } }` — commanded vs odometry-measured body velocities (m/s, rad/s). Divergence (cmd spinning, odom not following) is the map-smear precursor. |
 | `scan_low` | ≤10 Hz | **bin** — same packing as `scan` (float32 LE `[x,y,z,intensity] × N`, map frame). The LOW obstacle band (slam_bringup `/scan_low`, 0.05–0.15 m above floor): ankle-height clutter the costmap's low_obstacle_layer dodges (dog bowls, shoes). Never fed to map accumulation; dropped without TF. Droppable channel. |
 | `imu` | 10 Hz (bridge-decimated) | map `{ "angular_vel": [x,y,z] rad/s, "linear_accel": [x,y,z] m/s², "orientation"?: [x,y,z,w] }` — orientation omitted when the IMU doesn't fuse one (Mid-360 built-in doesn't) |
+| `rf2o_diag` | 1 Hz (stack=2d) | map — odometry health, see below. The 2D stack's rf2o `/odom`. |
+| `fastlio_diag` | 1 Hz (stack=3d) | map — same shape as `rf2o_diag`, `source: "fastlio"`. The 3D stack's FAST-LIO2 `/Odometry`. |
+| `slam_toolbox_diag` | 1 Hz (stack=2d) | map — map dims/coverage, pose-graph size, map→odom correction, see below |
+| `nav2_diag` | 1 Hz | map — composed nav state, active BT leaf, recovery count, plan length, controller cmd, see below |
+| `rtabmap_diag` | ≤2 Hz (stack=3d) | map — loop closures, processing time, memory, see below. Needs `rtabmap_msgs`. |
+
+Per-component **diagnostics** channels feed the viewer's DiagnosticsCard (one tab
+per SLAM-stack component). They are reliable, low-rate map payloads. Only the
+running stack's channels are advertised in `hello.channels` (`nav2_diag` always);
+the viewer shows the other stack's tabs as "inactive". `rf2o_diag`/`fastlio_diag`
+share one shape — they are the same `/odom` subscription per stack:
+
+```jsonc
+// rf2o_diag / fastlio_diag
+{
+  "source": "rf2o",        // "rf2o" (2d) | "fastlio" (3d)
+  "hz": 12.4,              // odom publish rate, Hz (0 = odometry dead)
+  "pose": [x, y, yaw],     // map/odom frame, m + rad
+  "vel": { "vx": 0.4, "wz": 0.0 },
+  "cov_trace": 0.02,       // pose covariance trace, or null if none published
+  "jump": false,           // between-samples position jump (divergence/correction)
+  "age_s": 0.08            // s since the last odom message (bridge-side)
+}
+
+// slam_toolbox_diag
+{
+  "map": { "w": 384, "h": 384, "res": 0.05, "known_m2": 41.2,
+           "updates": 37, "update_hz": 0.5 } | null,
+  "graph": { "nodes": 128, "edges": 130 } | null,   // null until graph viz seen
+  "correction": { "dist_m": 0.04, "yaw_deg": 1.3 } | null,  // latest map→odom delta
+  "mode": "mapping" | null
+}
+
+// nav2_diag
+{
+  "state": "navigating",   // "idle" | "navigating" | nav_status states
+  "bt_node": "FollowPath" | null,           // active BT leaf (needs BehaviorTreeLog)
+  "recoveries": { "total": 3, "last": "Spin" },
+  "plan_poses": 42,
+  "cmd": { "vx": 0.12, "wz": 0.0 },
+  "servers": { "planner": true, "controller": true } | null
+}
+
+// rtabmap_diag
+{
+  "loop_total": 5, "loop_last_id": 87 | null,
+  "proximity": 2, "ref_id": 412,
+  "proc_ms": 38.0 | null, "wm_size": 120 | null, "words": 350 | null,
+  "localized": true | null
+}
+```
 
 `occupancy_grid` payload:
 

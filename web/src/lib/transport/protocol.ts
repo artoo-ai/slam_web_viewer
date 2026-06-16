@@ -23,6 +23,12 @@ export const CH = {
   MISSION: 'mission',
   SCAN_LOW: 'scan_low',
   DEPTH: 'depth',
+  // per-component SLAM diagnostics (DiagnosticsCard)
+  RF2O_DIAG: 'rf2o_diag',
+  FASTLIO_DIAG: 'fastlio_diag',
+  SLAM_TOOLBOX_DIAG: 'slam_toolbox_diag',
+  NAV2_DIAG: 'nav2_diag',
+  RTABMAP_DIAG: 'rtabmap_diag',
 } as const
 
 export const SCAN_STRIDE_FLOATS = 4 // x, y, z, intensity

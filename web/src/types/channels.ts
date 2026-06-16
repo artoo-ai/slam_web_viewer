@@ -116,6 +116,55 @@ export interface ImuPayload {
   orientation?: [number, number, number, number]
 }
 
+/** Odometry diagnostics — shared by rf2o (2D stack) and FAST-LIO2 (3D stack);
+ *  they are the same /odom subscription per stack. `hz` 0 = odometry dead. */
+export interface OdomDiagPayload {
+  source: 'rf2o' | 'fastlio'
+  hz: number
+  /** [x, y, yaw] in the map/odom frame */
+  pose: [number, number, number]
+  vel: { vx: number; wz: number }
+  /** pose covariance trace if the publisher fills one, else null */
+  cov_trace: number | null
+  /** true on a between-samples position jump (divergence / SLAM correction) */
+  jump: boolean
+  age_s: number
+}
+
+export interface SlamToolboxDiagPayload {
+  map: {
+    w: number; h: number; res: number
+    known_m2: number; updates: number; update_hz: number
+  } | null
+  /** pose-graph size; null until the graph_visualization marker array is seen */
+  graph: { nodes: number; edges: number | null } | null
+  /** latest map->odom delta (drift SLAM is absorbing); null until known */
+  correction: { dist_m: number; yaw_deg: number } | null
+  mode: string | null
+}
+
+export interface Nav2DiagPayload {
+  /** composed: 'idle' | 'navigating' | nav_status states */
+  state: string
+  /** active behavior-tree leaf, null if no BT log */
+  bt_node: string | null
+  recoveries: { total: number; last: string | null }
+  plan_poses: number
+  cmd: { vx: number; wz: number }
+  servers: { planner: boolean; controller: boolean } | null
+}
+
+export interface RtabmapDiagPayload {
+  loop_total: number
+  loop_last_id: number | null
+  proximity: number
+  ref_id: number
+  proc_ms: number | null
+  wm_size: number | null
+  words: number | null
+  localized: boolean | null
+}
+
 /** A decoded frame as posted from the decoder worker to the main thread. */
 export interface DecodedFrame {
   topic: string

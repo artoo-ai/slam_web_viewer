@@ -14,6 +14,8 @@ export interface LayerVisibility {
   costmap_local: boolean
   path: boolean
   camera: boolean
+  /** the per-component SLAM diagnostics card (rf2o/slam_toolbox/nav2/rtabmap/fast-lio2) */
+  diagnostics: boolean
 }
 
 interface LayersState extends LayerVisibility {
@@ -31,5 +33,6 @@ export const useLayersStore = create<LayersState>((set) => ({
   costmap_local: false,
   path: true,
   camera: true,
+  diagnostics: true,
   toggle: (layer) => set((s) => ({ [layer]: !s[layer] }) as Partial<LayerVisibility>),
 }))

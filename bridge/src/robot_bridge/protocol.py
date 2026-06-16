@@ -38,6 +38,15 @@ CH_MISSION = "mission"  # high-level mission/exploration state
 CH_NODE_PARAMS = "node_params"  # deployed-config audit (docs/diagnostics.md §1)
 CH_SCAN_LOW = "scan_low"  # low obstacle band (0.05-0.15 m) laserscan, map frame — same packing as scan
 
+# Per-component SLAM diagnostics (docs/protocol.md §diagnostics). Map payloads,
+# reliable, low-rate (1-2 Hz). rf2o (2d) and fastlio (3d) share one builder
+# shape (odom_diag_payload) — they are the same /odom subscription per stack.
+CH_RF2O_DIAG = "rf2o_diag"            # 2D laser odometry health (stack=2d)
+CH_FASTLIO_DIAG = "fastlio_diag"      # FAST-LIO2 odometry health (stack=3d)
+CH_SLAM_TOOLBOX_DIAG = "slam_toolbox_diag"  # map + pose-graph + map->odom correction
+CH_NAV2_DIAG = "nav2_diag"            # BT node, recoveries, plan, controller cmd
+CH_RTABMAP_DIAG = "rtabmap_diag"      # loop closures, processing time, memory
+
 GRID_LAYERS = ("map", "costmap_global", "costmap_local")
 
 # Reserved channels (documented in docs/protocol.md, implemented in later slices)
@@ -305,6 +314,65 @@ def goal_ack_payload(cmd_id: int, goal_id: str, accepted: bool,
 
 def cancel_ack_payload(cmd_id: int, ok: bool) -> dict:
     return {"cmd": "cancel_ack", "id": cmd_id, "ok": ok}
+
+
+# ---------------------------------------------------------------------------
+# Per-component SLAM diagnostics payloads
+# ---------------------------------------------------------------------------
+
+def odom_diag_payload(*, source: str, hz: float,
+                      pose: tuple[float, float, float],
+                      vel: tuple[float, float],
+                      cov_trace: float | None, jump: bool, age_s: float) -> dict:
+    """Odometry health, shared by rf2o (2d) and FAST-LIO2 (3d).
+
+    `source` distinguishes them ("rf2o" | "fastlio"); `hz` is the measured
+    publish rate (0 = odometry dead); `pose` is [x, y, yaw]; `vel` is body
+    [vx, wz]; `cov_trace` is the pose covariance trace if the publisher fills
+    one (None otherwise); `jump` flags a between-samples position jump
+    (divergence / SLAM correction); `age_s` is seconds since the last message.
+    """
+    return {"source": source, "hz": hz, "pose": list(pose),
+            "vel": {"vx": vel[0], "wz": vel[1]},
+            "cov_trace": cov_trace, "jump": jump, "age_s": age_s}
+
+
+def slam_toolbox_diag_payload(*, map_info: dict | None, graph: dict | None,
+                              correction: dict | None, mode: str | None) -> dict:
+    """slam_toolbox health: map dims/coverage, pose-graph size, map->odom
+    correction magnitude, and mapping/localization mode.
+
+    `map_info`: {w, h, res, known_m2, updates, update_hz} or None until a map
+    arrives. `graph`: {nodes, edges} or None until the graph viz is seen.
+    `correction`: {dist_m, yaw_deg} latest map->odom delta, or None.
+    """
+    return {"map": map_info, "graph": graph,
+            "correction": correction, "mode": mode}
+
+
+def nav2_diag_payload(*, state: str, bt_node: str | None, recoveries: dict,
+                      plan_poses: int, cmd: dict,
+                      servers: dict | None) -> dict:
+    """Nav2 health: composed state ("idle"/"navigating"/...), the active
+    behavior-tree leaf, recovery actions counted ({total, last}), the current
+    global plan length, the latest controller command, and server liveness.
+    """
+    return {"state": state, "bt_node": bt_node, "recoveries": recoveries,
+            "plan_poses": plan_poses, "cmd": cmd, "servers": servers}
+
+
+def rtabmap_diag_payload(*, loop_total: int, loop_last_id: int | None,
+                         proximity: int, ref_id: int, proc_ms: float | None,
+                         wm_size: int | None, words: int | None,
+                         localized: bool | None) -> dict:
+    """RTAB-Map health from /rtabmap/info: cumulative loop closures and the
+    last closure's node id, proximity detections, current node id, per-update
+    processing time, working-memory size, current-frame words, and whether a
+    recent localization pose was seen. Version-varying fields are None-safe.
+    """
+    return {"loop_total": loop_total, "loop_last_id": loop_last_id,
+            "proximity": proximity, "ref_id": ref_id, "proc_ms": proc_ms,
+            "wm_size": wm_size, "words": words, "localized": localized}
 
 
 def nav_status_payload(state: str, goal_id: str | None = None,

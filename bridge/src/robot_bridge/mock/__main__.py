@@ -27,7 +27,12 @@ log = logging.getLogger("robot_bridge.mock")
 
 CHANNELS = ["scan", "map", "scan_low", "depth", "pose", "stats", "log", "status", "occupancy_grid",
             "nav_status", "nav_path", "velocity", "imu", "objects", "mission",
-            "node_params"]
+            "node_params",
+            # per-component diagnostics: the mock advertises ALL FIVE so every
+            # DiagnosticsCard tab is demoable offline (on hardware only the
+            # running stack's tabs populate).
+            "rf2o_diag", "fastlio_diag", "slam_toolbox_diag", "nav2_diag",
+            "rtabmap_diag"]
 
 # deployed-config audit demo values: max_vel_theta is INTENTIONALLY stale
 # (1.5 vs expected 0.6) so the CONFIG ✗ badge and red row are demoable offline
@@ -383,6 +388,85 @@ class MockBridge:
                 angular_vel=gyro, linear_accel=accel))
             await asyncio.sleep(0.1)
 
+    async def diag_loop(self):
+        """Synthetic per-component diagnostics for all five DiagnosticsCard tabs.
+        Aligns a fault episode with the velocity smear window (every 20 s, for
+        3 s) so rf2o reads low-rate + jumping and Nav2 fires a recovery —
+        exercising the panels' alarm states offline."""
+        rng = np.random.default_rng(self.args.seed + 5)
+        loop_total = 0
+        proximity = 0
+        recoveries = 0
+        last_recovery = None
+        updates = 0
+        while True:
+            await asyncio.sleep(1.0)
+            t = time.time() - self.t0
+            d = self.distance()
+            pos, q, _ = pose_at(d)
+            _, q1, _ = pose_at(d + 0.05)
+            yaw = 2.0 * float(np.arctan2(q[2], q[3]))
+            yaw1 = 2.0 * float(np.arctan2(q1[2], q1[3]))
+            wz = float(np.unwrap([yaw, yaw1])[1] - yaw) / (0.05 / self.args.speed)
+            in_episode = (t % 20.0) < 3.0
+            if in_episode:
+                vx, wz = 0.0, 0.03
+            else:
+                vx = self.args.speed
+            # rf2o: drops to ~2 Hz and jumps during the fault episode
+            rf2o_hz = 2.0 if in_episode else 12.0 + float(rng.normal(0, 0.4))
+            self.server.broadcast(protocol.CH_RF2O_DIAG, protocol.odom_diag_payload(
+                source="rf2o", hz=round(rf2o_hz, 1),
+                pose=(float(pos[0]), float(pos[1]), yaw), vel=(round(vx, 3), round(wz, 3)),
+                cov_trace=round(0.02 + abs(float(rng.normal(0, 0.005))), 4),
+                jump=bool(in_episode and (t % 20.0) > 2.0),
+                age_s=round(1.0 / max(rf2o_hz, 0.1), 2)))
+            # fast-lio2: steady, high-rate, no covariance reported
+            self.server.broadcast(protocol.CH_FASTLIO_DIAG, protocol.odom_diag_payload(
+                source="fastlio", hz=round(48.0 + float(rng.normal(0, 1.0)), 1),
+                pose=(float(pos[0]), float(pos[1]), yaw),
+                vel=(round(self.args.speed, 3), round(wz, 3)),
+                cov_trace=None, jump=False, age_s=0.02))
+            # slam_toolbox: growing pose-graph + small drifting correction
+            updates += 1
+            nodes = int(d / 0.3)
+            known = int((self.grid.visited & (self.grid.static != -1)).sum())
+            self.server.broadcast(
+                protocol.CH_SLAM_TOOLBOX_DIAG, protocol.slam_toolbox_diag_payload(
+                    map_info={"w": self.grid.width, "h": self.grid.height,
+                              "res": RESOLUTION,
+                              "known_m2": round(known * RESOLUTION ** 2, 1),
+                              "updates": updates, "update_hz": 0.5},
+                    graph={"nodes": nodes, "edges": max(0, nodes - 1 + self.last_lap)},
+                    correction={"dist_m": round(abs(float(rng.normal(0, 0.03))), 3),
+                                "yaw_deg": round(abs(float(rng.normal(0, 1.0))), 2)},
+                    mode="mapping"))
+            # nav2: recovery burst when navigating during the fault episode
+            if self.active_goal and in_episode and rng.random() < 0.5:
+                recoveries += 1
+                last_recovery = "Spin"
+            state = "navigating" if self.active_goal else "idle"
+            self.server.broadcast(protocol.CH_NAV2_DIAG, protocol.nav2_diag_payload(
+                state=state,
+                bt_node=("Spin" if (self.active_goal and in_episode)
+                         else "FollowPath" if self.active_goal else "Idle"),
+                recoveries={"total": recoveries, "last": last_recovery},
+                plan_poses=12 if self.active_goal else 0,
+                cmd={"vx": round(vx, 3), "wz": round(wz, 3)},
+                servers={"planner": True, "controller": True}))
+            # rtabmap: occasional loop closures, plausible timing/memory
+            if rng.random() < 0.15:
+                loop_total += 1
+                if rng.random() < 0.5:
+                    proximity += 1
+            self.server.broadcast(protocol.CH_RTABMAP_DIAG, protocol.rtabmap_diag_payload(
+                loop_total=loop_total,
+                loop_last_id=int(d * 3) if loop_total else None,
+                proximity=proximity, ref_id=int(d * 3),
+                proc_ms=round(30.0 + float(rng.normal(0, 5)), 1),
+                wm_size=80 + nodes, words=300 + int(rng.random() * 80),
+                localized=True))
+
     async def camera_loop(self):
         # frames render regardless of WS clients — MJPEG has its own consumers.
         # Two streams exercise the viewer's multi-camera strip.
@@ -431,6 +515,7 @@ class MockBridge:
             self.mission_loop(),
             self.objects_loop(),
             self.chatter_loop(),
+            self.diag_loop(),
         ]
         if self.mjpeg is not None:
             loops += [self.mjpeg.serve_forever(self.args.host, self.args.mjpeg_port),

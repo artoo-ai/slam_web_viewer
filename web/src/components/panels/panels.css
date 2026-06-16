@@ -218,3 +218,54 @@
 .log-level-info { color: var(--text); }
 .log-level-warn { color: var(--warn); }
 .log-level-error { color: var(--err); }
+
+/* ---- per-component SLAM diagnostics panels ---- */
+.diag-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 12px 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+.diag-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.diag-active { color: var(--ok); }
+.diag-stale { color: var(--err); }
+.diag-inactive { color: var(--text-dim); }
+.diag-stale .diag-dot { animation: smear-pulse 1.2s infinite; }
+
+.diag-body { padding: 4px 12px 10px; display: flex; flex-direction: column; gap: 3px; }
+
+.diag-sub {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+.diag-sub:first-child { margin-top: 0; }
+
+.diag-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.diag-k { color: var(--text-dim); }
+.diag-v { font-family: var(--font-mono); color: var(--text); text-align: right; }
+.diag-v-warn { color: var(--err); }
+
+.diag-empty {
+  padding: 8px 12px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}

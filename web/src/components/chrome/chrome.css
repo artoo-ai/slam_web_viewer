@@ -449,3 +449,88 @@
 .cam-slot-label em { font-style: normal; color: var(--warn); }
 
 .cam-slot-empty { opacity: 0.6; }
+
+/* ---- per-component SLAM diagnostics card (top-left) ---- */
+.diag-card {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  width: 340px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(19, 24, 32, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  backdrop-filter: blur(4px);
+}
+
+.diag-card-collapsed {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  font: inherit;
+  font-size: 11px;
+  padding: 5px 10px;
+  color: var(--accent);
+  background: rgba(19, 24, 32, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+
+.diag-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.diag-card-title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.diag-collapse {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.diag-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.diag-tab {
+  font: inherit;
+  font-size: 10.5px;
+  padding: 5px 9px;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.diag-tab-active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+
+.diag-panel { overflow-y: auto; }
+.diag-panel .panel { border: none; border-radius: 0; background: transparent; }
+.diag-panel .panel-header {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 6px 12px 0;
+  text-transform: none;
+}
