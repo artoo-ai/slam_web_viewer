@@ -28,6 +28,9 @@ log = logging.getLogger("robot_bridge.mock")
 CHANNELS = ["scan", "map", "scan_low", "depth", "pose", "stats", "log", "status", "occupancy_grid",
             "nav_status", "nav_path", "velocity", "imu", "objects", "mission",
             "node_params",
+            # teleop capability: the mock accepts cmd_vel and reflects it into the
+            # velocity channel (the robot keeps its fixed loop — see velocity_loop)
+            "teleop",
             # per-component diagnostics: the mock advertises ALL FIVE so every
             # DiagnosticsCard tab is demoable offline (on hardware only the
             # running stack's tabs populate).
@@ -80,6 +83,10 @@ class MockBridge:
         self.mjpeg = MjpegServer(fps=10.0) if args.mjpeg_port else None
         self.mapacc = MapAccumulator(voxel_size=0.10)
         self.found_objects: list[dict] = []
+        # latest teleop command (vx, wz) + monotonic stamp; reflected into the
+        # velocity channel while fresh so the joystick is testable offline
+        self._teleop = (0.0, 0.0)
+        self._teleop_t = 0.0
 
     # -- distance traveled at "now", at constant --speed
     def distance(self) -> float:
@@ -138,6 +145,12 @@ class MockBridge:
                     goal["cancelled"] = True
                 await self.server.reply_ack(
                     client, protocol.cancel_ack_payload(cmd.get("id", 0), ok))
+            case "cmd_vel":
+                # fire-and-forget (no ack). Clamp to the same defaults the real
+                # bridge uses and stash it for velocity_loop to reflect back.
+                self._teleop = protocol.clamp_twist(
+                    float(cmd.get("vx", 0.0)), float(cmd.get("wz", 0.0)), 0.5, 0.6)
+                self._teleop_t = time.monotonic()
             case other:
                 log.info("ignoring unknown command %r", other)
 
@@ -269,7 +282,14 @@ class MockBridge:
             yaw1 = 2.0 * np.arctan2(q1[2], q1[3])
             wz = float(np.unwrap([yaw0, yaw1])[1] - yaw0) / (0.05 / self.args.speed)
             in_episode = (t % 20.0) < 3.0
-            if in_episode:
+            teleop_fresh = (time.monotonic() - self._teleop_t) < 0.4
+            if teleop_fresh:
+                # manual drive overrides the synthetic profile: show the joystick
+                # command as cmd, with odom loosely following it
+                cmd_vx, cmd_wz = self._teleop
+                odom_vx = cmd_vx + float(rng.normal(0, 0.01))
+                odom_wz = cmd_wz + float(rng.normal(0, 0.02))
+            elif in_episode:
                 cmd_vx, cmd_wz = 0.0, 1.0
                 odom_vx, odom_wz = 0.0, 0.03 + float(rng.normal(0, 0.01))
             else:

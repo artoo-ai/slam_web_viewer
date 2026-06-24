@@ -59,8 +59,8 @@ cd ~/robot_gui
 ./install_jetson.sh
 ```
 
-Run (after the SLAM stack is up). `start_bridge.sh` sources ROS2 and bootstraps the venv itself,
-so it also works standalone without the install step:
+Terminal 1 — on the Jetson, run the bridge (after the SLAM stack is up). `start_bridge.sh` sources
+ROS2 and bootstraps the venv itself, so it also works standalone without the install step:
 
 ```bash
 cd ~/robot_gui
@@ -71,11 +71,43 @@ cd ~/robot_gui
 #   ./start_bridge.sh 2d --map-topic /my_map   override a preset topic ('' disables)
 ```
 
-Then on the Mac, point the viewer at the robot:
+Terminal 2 — on the Mac, start the web viewer (same as Quickstart; the viewer is always served
+from your Mac, never the robot):
+
+```bash
+cd web
+npm run dev
+```
+
+Then open the browser on the Mac and point the viewer at the robot with `?ws=` (the
+viewer is on localhost, only the WebSocket targets the Jetson):
 
 ```
 http://localhost:5173/?ws=ws://gizmo.local:9090
 ```
+
+### Manual drive (joystick)
+
+When the bridge advertises teleop, a **Manual Drive** joystick appears top-right (toggle
+it under the sidebar). **Arm** it, then drag the pad or hold **W A S D / arrow keys** to
+stream `cmd_vel` to the robot. Releasing the pad/keys, hitting **STOP**, disconnecting, or
+even closing the tab halts the robot — the bridge runs a deadman (default 0.4 s) that
+publishes a zero `Twist` the moment the stream lapses. Commands are clamped to
+`--teleop-max-vx` / `--teleop-max-wz` (0.5 m/s, 0.6 rad/s) robot-side.
+
+```bash
+./start_bridge.sh 2d                              # teleop on, publishes /cmd_vel
+./start_bridge.sh 2d --no-teleop                  # read-only viewer (no joystick)
+./start_bridge.sh 2d --teleop-topic /cmd_vel_teleop   # feed a twist_mux input instead
+```
+
+> With Nav2 running, driving `/cmd_vel` directly fights the autonomous stack. Point
+> `--teleop-topic` at a `twist_mux` input (e.g. `/cmd_vel_teleop`) so manual and Nav2
+> commands are prioritized rather than colliding.
+
+The mock (`./start_bridge.sh mock`) also accepts the joystick: it can't move its fixed
+loop, but it reflects the command into the Rotation Tracking panel so you can exercise
+the full control before trusting it on hardware.
 
 Status: the rclpy bridge compiles and is unit-tested ROS-free, but has not yet been run against
 real hardware. `stats`/`log`/`status` channels are not emitted by it yet (panels show

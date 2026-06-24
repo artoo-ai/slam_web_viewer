@@ -269,3 +269,114 @@
   font-size: 11px;
   color: var(--text-dim);
 }
+
+/* ---- teleop joystick (floating, top-right of the viewport) ---- */
+.teleop {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 178px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  z-index: 5;
+  user-select: none;
+}
+
+.teleop-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.teleop-armed { color: var(--err); font-weight: 700; animation: smear-pulse 1.4s infinite; }
+.teleop-safe { color: var(--text-dim); }
+
+.teleop-pad {
+  position: relative;
+  width: 156px;
+  height: 156px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, var(--bg-panel-header), var(--bg));
+  border: 1px solid var(--border);
+  touch-action: none;
+  cursor: grab;
+}
+
+.teleop-pad:active { cursor: grabbing; }
+.teleop-pad-off { opacity: 0.4; cursor: not-allowed; }
+
+.teleop-crosshair-h,
+.teleop-crosshair-v {
+  position: absolute;
+  background: var(--border);
+}
+.teleop-crosshair-h { left: 8%; right: 8%; top: 50%; height: 1px; }
+.teleop-crosshair-v { top: 8%; bottom: 8%; left: 50%; width: 1px; }
+
+.teleop-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.teleop-readout {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.teleop-slider {
+  display: grid;
+  grid-template-columns: 38px 1fr 32px;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.teleop-slider input { width: 100%; accent-color: var(--accent); }
+.teleop-pct { font-family: var(--font-mono); text-align: right; }
+
+.teleop-row { display: flex; }
+
+.teleop-btn {
+  flex: 1;
+  padding: 6px 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.teleop-btn:disabled { opacity: 0.4; cursor: default; }
+
+.teleop-arm { color: var(--ok); background: transparent; border: 1px solid var(--ok); }
+.teleop-arm:hover:not(:disabled) { background: rgba(52, 211, 153, 0.15); }
+
+.teleop-estop { color: #fff; background: var(--err); border: 1px solid var(--err); }
+
+.teleop-hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  text-align: center;
+}

@@ -242,6 +242,20 @@ class Connection {
     return () => set.delete(cb)
   }
 
+  /** Whether the connected server advertised a capability in hello.channels. */
+  hasChannel(name: string): boolean {
+    return useConnectionStore.getState().hello?.channels.includes(name) ?? false
+  }
+
+  /** Fire-and-forget command — assigns an id (protocol conformance) but never
+   *  waits for an ack. For high-rate streams (teleop cmd_vel) where per-message
+   *  acks are pointless and would leak pending-ack timers. No-op if not open. */
+  send(command: CommandInput): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    const id = this.nextCmdId++
+    this.ws.send(encodeCommand({ ...command, id } as Command))
+  }
+
   /** Send a command; resolves with its cmd_ack (or null if not connected /
    *  timed out). Slow commands (map_save compresses on the robot) get longer. */
   sendCommand(command: CommandInput, timeoutMs = 5000): Promise<CmdAckPayload | null> {

@@ -115,6 +115,8 @@ class Ros2Bridge:
             channels += ["scan", "map"]
         if args.scan_low_topic:
             channels.append("scan_low")
+        if args.teleop and args.teleop_topic:
+            channels.append("teleop")  # capability flag: bridge accepts cmd_vel
         if args.depth_topic:
             channels.append("depth")
         if args.detections_topic:
@@ -163,6 +165,15 @@ class Ros2Bridge:
         self.cmd_vel = (0.0, 0.0)   # vx, wz
         self.cmd_vel_t = 0.0        # monotonic stamp; cmd decays to 0 when stale
         self.odom_vel = (0.0, 0.0)
+
+        # teleop (manual drive): latest browser command, republished to the robot
+        # at a fixed rate by a ROS-thread timer. Written from the asyncio command
+        # handler, read by the ROS thread — plain attributes, fine under the GIL.
+        self._teleop_pub = None          # rclpy Twist publisher (ROS thread only)
+        self._teleop_msg_type = None     # geometry_msgs/Twist (ROS thread only)
+        self._teleop_cmd = (0.0, 0.0)    # latest clamped (vx, wz)
+        self._teleop_t = 0.0             # monotonic stamp of the latest command
+        self._teleop_live = False        # True while a non-expired command stands
         self._tf_buffer = None
         self._tf_warned = False
         self._bench_mode = False  # true while scans render untransformed (no TF)
@@ -377,6 +388,19 @@ class Ros2Bridge:
         except ImportError:
             log.warning("nav2_msgs not available — goal sending disabled")
 
+        # teleop: publish manual-drive Twist commands from the viewer's joystick.
+        # A timer republishes the latest command at a fixed rate and enforces the
+        # deadman (zero on staleness) so a dropped client always stops the robot.
+        if self.args.teleop and self.args.teleop_topic:
+            from geometry_msgs.msg import Twist as TwistPub
+            self._teleop_msg_type = TwistPub
+            self._teleop_pub = node.create_publisher(
+                TwistPub, self.args.teleop_topic, 10)
+            node.create_timer(1.0 / self.args.teleop_rate, self._publish_teleop)
+            subscribed.append(f"teleop->{self.args.teleop_topic} "
+                              f"(≤{self.args.teleop_max_vx} m/s, "
+                              f"≤{self.args.teleop_max_wz} rad/s)")
+
         # drain asyncio -> ROS jobs (nav goal send/cancel) at 20 Hz
         node.create_timer(0.05, self._drain_jobs)
         # watch map->odom for SLAM correction jumps (re-bake the 3D map)
@@ -559,6 +583,29 @@ class Ros2Bridge:
     def on_cmd_vel(self, msg) -> None:
         self.cmd_vel = (float(msg.linear.x), float(msg.angular.z))
         self.cmd_vel_t = time.monotonic()
+
+    def _publish_teleop(self) -> None:
+        """Republish the latest teleop command at a fixed rate (ROS thread).
+
+        Holding the command steady between browser packets gives the robot a
+        smooth stream despite WiFi jitter. The deadman: once the command is
+        older than --teleop-timeout, publish ONE zero Twist and go quiet — so a
+        released joystick, a closed tab, or a dropped link all stop the robot.
+        """
+        if self._teleop_pub is None:
+            return
+        fresh = (time.monotonic() - self._teleop_t) <= self.args.teleop_timeout
+        if fresh:
+            vx, wz = self._teleop_cmd
+        elif self._teleop_live:
+            vx, wz = 0.0, 0.0          # deadman fired — one zero, then silence
+            self._teleop_live = False
+        else:
+            return                     # idle: don't spam the robot with zeros
+        msg = self._teleop_msg_type()
+        msg.linear.x = float(vx)
+        msg.angular.z = float(wz)
+        self._teleop_pub.publish(msg)
 
     def _count_scan2d(self) -> None:
         self.scan2d_count += 1
@@ -1090,6 +1137,16 @@ class Ros2Bridge:
                 goal_id = cmd.get("goal_id")
                 self._ros_jobs.put(
                     lambda: self._ros_cancel_goal(cmd_id, client, goal_id))
+            case "cmd_vel":
+                # high-rate, fire-and-forget (no ack). Clamp here; the ROS-thread
+                # timer publishes. Just set plain attributes (GIL-safe) — the
+                # job queue would add needless latency to a 20 Hz stream.
+                if self.args.teleop and self._teleop_pub is not None:
+                    self._teleop_cmd = protocol.clamp_twist(
+                        float(cmd.get("vx", 0.0)), float(cmd.get("wz", 0.0)),
+                        self.args.teleop_max_vx, self.args.teleop_max_wz)
+                    self._teleop_t = time.monotonic()
+                    self._teleop_live = True
             case "get_params":
                 await self.server.reply_ack(client, {
                     "cmd": "params_ack", "id": cmd.get("id", 0), "ok": True})
@@ -1238,6 +1295,26 @@ def main() -> None:
                         help="Nav2 global plan nav_msgs/Path ('' disables)")
     parser.add_argument("--cmd-vel-topic", default="/cmd_vel",
                         help="commanded Twist for the velocity channel ('' disables)")
+    # teleop (manual drive from the viewer's joystick) -> geometry_msgs/Twist
+    parser.add_argument("--teleop", action="store_true", default=True,
+                        help="accept cmd_vel teleop from the viewer (default on)")
+    parser.add_argument("--no-teleop", dest="teleop", action="store_false",
+                        help="disable manual drive (read-only viewer)")
+    parser.add_argument("--teleop-topic", default="/cmd_vel",
+                        help="Twist topic the joystick drives ('' disables). With "
+                             "Nav2 running, point this at a twist_mux input "
+                             "(e.g. /cmd_vel_teleop) so manual and autonomous "
+                             "commands don't fight")
+    parser.add_argument("--teleop-max-vx", type=float, default=0.5,
+                        help="max teleop linear speed, m/s (commands are clamped)")
+    parser.add_argument("--teleop-max-wz", type=float, default=0.6,
+                        help="max teleop angular speed, rad/s (clamped; matches the "
+                             "0.6 deployed max_vel_theta)")
+    parser.add_argument("--teleop-timeout", type=float, default=0.4,
+                        help="deadman: stop the robot if no cmd_vel arrives within "
+                             "this many seconds")
+    parser.add_argument("--teleop-rate", type=float, default=20.0,
+                        help="rate (Hz) the latest teleop command is republished")
     parser.add_argument("--mission-topic", default="/explore/status",
                         help="std_msgs/String JSON mission status ('' disables)")
     parser.add_argument("--scan-low-topic", default=None,

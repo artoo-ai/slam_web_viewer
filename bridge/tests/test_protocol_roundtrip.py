@@ -20,6 +20,21 @@ def test_frame_roundtrip_map_payload():
     }
 
 
+def test_clamp_twist_limits_and_passthrough():
+    # within limits: unchanged
+    assert protocol.clamp_twist(0.3, -0.2, 0.5, 0.6) == (0.3, -0.2)
+    # over the cap, both signs: clamped symmetrically
+    assert protocol.clamp_twist(2.0, -2.0, 0.5, 0.6) == (0.5, -0.6)
+    # negative cap is treated by magnitude
+    assert protocol.clamp_twist(-9.0, 9.0, 0.5, 0.6) == (-0.5, 0.6)
+
+
+def test_clamp_twist_rejects_non_finite():
+    # a NaN/inf from a malformed command must never reach the robot as motion
+    assert protocol.clamp_twist(float("nan"), float("inf"), 0.5, 0.6) == (0.0, 0.0)
+    assert protocol.clamp_twist(float("-inf"), 0.1, 0.5, 0.6) == (0.0, 0.1)
+
+
 def test_frame_roundtrip_bin_payload():
     xyzi = np.array([[1.5, -2.5, 0.25, 0.8]], dtype=np.float32)
     raw = protocol.make_frame(protocol.CH_SCAN, protocol.pack_scan(xyzi), seq=0, ts=1.0)

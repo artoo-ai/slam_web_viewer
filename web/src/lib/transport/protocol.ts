@@ -29,6 +29,8 @@ export const CH = {
   SLAM_TOOLBOX_DIAG: 'slam_toolbox_diag',
   NAV2_DIAG: 'nav2_diag',
   RTABMAP_DIAG: 'rtabmap_diag',
+  // capability flag in hello.channels: server accepts cmd_vel teleop
+  TELEOP: 'teleop',
 } as const
 
 export const SCAN_STRIDE_FLOATS = 4 // x, y, z, intensity
@@ -86,6 +88,16 @@ export interface GetParamsCommand {
   node?: string
 }
 
+/** Teleop body twist (REP-103: vx forward m/s, wz CCW rad/s). Streamed while a
+ *  control is held; fire-and-forget (no ack). The bridge clamps and applies a
+ *  deadman, so a missing stream stops the robot. */
+export interface CmdVelCommand {
+  cmd: 'cmd_vel'
+  id: number
+  vx: number
+  wz: number
+}
+
 export type Command =
   | PingCommand
   | SetParamCommand
@@ -95,6 +107,7 @@ export type Command =
   | RecStopCommand
   | MapSaveCommand
   | GetParamsCommand
+  | CmdVelCommand
 
 /** Omit that distributes over unions (plain Omit collapses Command to common keys). */
 export type DistributiveOmit<T, K extends keyof never> = T extends unknown

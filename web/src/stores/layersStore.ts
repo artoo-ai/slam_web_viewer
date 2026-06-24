@@ -16,6 +16,8 @@ export interface LayerVisibility {
   camera: boolean
   /** the per-component SLAM diagnostics card (rf2o/slam_toolbox/nav2/rtabmap/fast-lio2) */
   diagnostics: boolean
+  /** the manual-drive joystick panel (only shown if the server advertises teleop) */
+  teleop: boolean
 }
 
 interface LayersState extends LayerVisibility {
@@ -34,5 +36,6 @@ export const useLayersStore = create<LayersState>((set) => ({
   path: true,
   camera: true,
   diagnostics: true,
+  teleop: true,
   toggle: (layer) => set((s) => ({ [layer]: !s[layer] }) as Partial<LayerVisibility>),
 }))

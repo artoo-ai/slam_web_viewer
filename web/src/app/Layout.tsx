@@ -6,6 +6,7 @@ import { DiagnosticsCard } from '../components/chrome/DiagnosticsCard'
 import { BboxReadout, CameraInset, IntensityLegend } from '../components/chrome/Overlays'
 import { StalenessStrip } from '../components/chrome/StalenessStrip'
 import { AlertBanners } from '../components/chrome/AlertBanners'
+import { TeleopPanel } from '../components/panels/TeleopPanel'
 import './layout.css'
 
 /** SJY HandHeldSLAM-style chrome: header bar, left sidebar, viewport filling
@@ -24,6 +25,7 @@ export function Layout() {
         <IntensityLegend />
         <CameraInset />
         <BboxReadout />
+        <TeleopPanel />
       </main>
     </div>
   )

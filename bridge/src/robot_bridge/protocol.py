@@ -37,6 +37,7 @@ CH_OBJECTS = "objects"  # persistent semantic objects with thumbnails
 CH_MISSION = "mission"  # high-level mission/exploration state
 CH_NODE_PARAMS = "node_params"  # deployed-config audit (docs/diagnostics.md §1)
 CH_SCAN_LOW = "scan_low"  # low obstacle band (0.05-0.15 m) laserscan, map frame — same packing as scan
+CH_TELEOP = "teleop"  # capability flag in hello.channels: server accepts cmd_vel teleop (no frames)
 
 # Per-component SLAM diagnostics (docs/protocol.md §diagnostics). Map payloads,
 # reliable, low-rate (1-2 Hz). rf2o (2d) and fastlio (3d) share one builder
@@ -301,6 +302,21 @@ def param_ack_payload(cmd_id: int, node: str, accepted: dict, rejected: dict,
 
 def pong_payload(cmd_id: int, t: float) -> dict:
     return {"cmd": "pong", "id": cmd_id, "t": t}
+
+
+def clamp_twist(vx: float, wz: float, max_vx: float, max_wz: float
+                ) -> tuple[float, float]:
+    """Clamp a teleop body twist to the configured maxima (symmetric).
+
+    Non-finite inputs (NaN/inf from a malformed command) become 0 — a safety
+    default: a bad number must never reach the robot as motion.
+    """
+    def lim(v: float, cap: float) -> float:
+        if v != v or v in (float("inf"), float("-inf")):  # NaN / inf
+            return 0.0
+        cap = abs(cap)
+        return max(-cap, min(cap, float(v)))
+    return lim(vx, max_vx), lim(wz, max_wz)
 
 
 def goal_ack_payload(cmd_id: int, goal_id: str, accepted: bool,

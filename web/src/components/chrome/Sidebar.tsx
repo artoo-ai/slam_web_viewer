@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useLayersStore, type LayerVisibility } from '../../stores/layersStore'
+import { useConnectionStore } from '../../stores/connectionStore'
 import { useViewerParams, type FollowMode } from '../../stores/viewerParamsStore'
 import { useBookmarks } from '../../stores/bookmarksStore'
 import { useRecStore } from '../../stores/recStore'
@@ -57,6 +58,9 @@ export function Sidebar() {
   const bookmarks = useBookmarks()
   const rec = useRecStore()
   const send = useSendCommand()
+  const hasTeleop = useConnectionStore(
+    (s) => s.hello?.channels.includes('teleop') ?? false,
+  )
 
   const [bookmarkSel, setBookmarkSel] = useState('')
   const [custom, setCustom] = useState(false)
@@ -119,6 +123,14 @@ export function Sidebar() {
                  onChange={() => layers.toggle('diagnostics')} />
           SLAM Diagnostics
         </label>
+        {hasTeleop && (
+          <label className="sb-check"
+                 title="Manual-drive joystick (top-right): arm it, then drag the pad or hold WASD/arrow keys to drive the robot. Releasing or disconnecting stops it (bridge deadman).">
+            <input type="checkbox" checked={layers.teleop}
+                   onChange={() => layers.toggle('teleop')} />
+            Manual Drive
+          </label>
+        )}
       </div>
 
       <div className="sb-section">

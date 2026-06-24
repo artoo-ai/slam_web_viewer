@@ -182,6 +182,24 @@ correlation `id` (uint, monotonic per connection). Replies arrive as frames with
 // → cmd_ack data: { "cmd": "cancel_ack", "id": 10, "ok": true }
 ```
 
+```jsonc
+// Teleop velocity (manual drive). Body frame, REP-103: vx forward (m/s),
+// wz CCW/left (rad/s). Streamed at ~10-20 Hz while a joystick/key is held.
+// Fire-and-forget: NOT acked (the rate makes per-message acks pointless) — the
+// commanded velocity is observable on the `velocity` channel like any other cmd.
+{ "cmd": "cmd_vel", "id": 11, "vx": 0.4, "wz": -0.2 }
+// The bridge CLAMPS to its configured max linear/angular speed and holds the
+// latest twist, republishing it to the robot at a fixed rate. A DEADMAN applies:
+// if no cmd_vel arrives within the timeout (default 0.4 s) the bridge publishes
+// a single zero Twist and stops — so a released control, a closed tab, or a
+// dropped connection halts the robot. The client SHOULD also send an explicit
+// { "vx": 0, "wz": 0 } on release for an immediate stop.
+```
+
+A server advertises teleop support with the `teleop` capability in `hello.channels`
+(a flag — no frames are published on it). The viewer shows the joystick only when
+the connected server lists it; mock and read-only bridges omit it.
+
 ## Backpressure
 
 High-rate droppable channels (`scan`, later `map`/`depth`) MUST be dropped — never queued — when a
