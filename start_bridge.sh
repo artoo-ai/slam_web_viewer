@@ -8,6 +8,10 @@
 #   ./start_bridge.sh 2d              # live: slam_toolbox stack (/odom + /map)
 #   ./start_bridge.sh 3d              # live: FAST-LIO2/RTABMap stack
 #   ./start_bridge.sh 2d --port 9091  # extra args pass through to the bridge
+#   ./start_bridge.sh 2d --with-mux   # also launch twist_mux; teleop drives
+#                                     #   /cmd_vel_teleop, mux owns /cmd_vel
+#                                     #   (needs Nav2 output repointed to
+#                                     #    /cmd_vel_nav — see config/twist_mux.yaml)
 #
 # Live modes source /opt/ros/humble (+ ~/slam_ws/install if present) and use a
 # --system-site-packages venv (bridge/.venv-ros) so rclpy is importable.
@@ -85,7 +89,34 @@ case "$MODE" in
             echo "             created without --system-site-packages)." >&2
             exit 1
         fi
-        exec "$BRIDGE_DIR/.venv-ros/bin/python" -m robot_bridge.ros2 --stack "$MODE" "$@"
+        # --with-mux: also launch twist_mux (via start_twist_mux.sh) and point
+        # teleop at its /cmd_vel_teleop input. The flag is consumed here, not
+        # passed through to the bridge.
+        WITH_MUX=0
+        BRIDGE_ARGS=()
+        for arg in "$@"; do
+            if [[ "$arg" == "--with-mux" ]]; then WITH_MUX=1
+            else BRIDGE_ARGS+=("$arg"); fi
+        done
+
+        TELEOP_ARGS=()
+        if [[ "$WITH_MUX" == 1 ]]; then
+            echo "start_bridge: launching twist_mux via start_twist_mux.sh"
+            "$SCRIPT_DIR/start_twist_mux.sh" &
+            MUX_PID=$!
+            trap 'echo "start_bridge: stopping twist_mux ($MUX_PID)"; kill "$MUX_PID" 2>/dev/null || true' EXIT INT TERM
+            # feed the mux instead of /cmd_vel directly. A user-supplied
+            # --teleop-topic later in the args still wins (argparse takes last).
+            TELEOP_ARGS=(--teleop-topic /cmd_vel_teleop)
+        fi
+
+        BRIDGE=("$BRIDGE_DIR/.venv-ros/bin/python" -m robot_bridge.ros2 --stack "$MODE")
+        if [[ "$WITH_MUX" == 1 ]]; then
+            # NOT exec: keep this shell alive so the trap can reap twist_mux
+            "${BRIDGE[@]}" "${TELEOP_ARGS[@]+"${TELEOP_ARGS[@]}"}" "${BRIDGE_ARGS[@]+"${BRIDGE_ARGS[@]}"}"
+        else
+            exec "${BRIDGE[@]}" "${BRIDGE_ARGS[@]+"${BRIDGE_ARGS[@]}"}"
+        fi
         ;;
     *)
         echo "Usage: $0 [mock|2d|3d] [bridge args...]" >&2

@@ -108,13 +108,14 @@ unpredictably. `install_jetson.sh` installs `twist_mux` for this; a ready config
 a 0.5 s release timeout). To use it:
 
 ```bash
-# 1. on the Jetson, run the muxer — its output replaces /cmd_vel
-ros2 run twist_mux twist_mux --ros-args \
-    --params-file config/twist_mux.yaml -r cmd_vel_out:=/cmd_vel
-# 2. point Nav2's controller/velocity_smoother output at /cmd_vel_nav (slam_bringup)
-# 3. start the bridge so the joystick feeds the muxer, not /cmd_vel directly
-./start_bridge.sh 2d --teleop-topic /cmd_vel_teleop
+# point Nav2's controller/velocity_smoother output at /cmd_vel_nav (slam_bringup),
+# then let start_bridge launch the muxer and feed it /cmd_vel_teleop:
+./start_bridge.sh 2d --with-mux
 ```
+
+`--with-mux` runs [`start_twist_mux.sh`](start_twist_mux.sh) (its output owns `/cmd_vel`)
+and stops it again when the bridge exits. You can also run the muxer on its own —
+`./start_twist_mux.sh` — e.g. to keep it up across bridge restarts.
 
 Releasing the joystick goes silent, the teleop input times out after 0.5 s, and Nav2
 takes back `/cmd_vel` automatically. For **manual-only** driving (Nav2 idle) you don't
