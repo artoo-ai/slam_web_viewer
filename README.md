@@ -101,6 +101,42 @@ publishes a zero `Twist` the moment the stream lapses. Commands are clamped to
 ./start_bridge.sh 2d --teleop-topic /cmd_vel_teleop   # feed a twist_mux input instead
 ```
 
+**The robot only moves if a base driver is consuming `/cmd_vel`.** The viewer bridge
+*publishes* `/cmd_vel` — it does not drive motors. On the slam_bringup rover the consumer
+is `yahboom_bridge_node`, which is **off by default** in the 2D stack
+(`enable_drive:=false`). If the joystick changes `/cmd_vel` but the rover sits still, the
+motor driver isn't running. Start it (in the slam_bringup repo):
+
+```bash
+./start_yahboom.sh                    # standalone motor driver (no SLAM restart)
+# or bring it up with the stack:
+./start_slam_2d.sh enable_drive:=true
+```
+
+Verify the chain — the count must be **≥ 2** (the bridge's own velocity readout **plus**
+the motor driver). If it's `1`, only the bridge is on the topic and nothing drives:
+
+```bash
+ros2 topic info /cmd_vel               # Publisher count: 1, Subscription count: ≥ 2
+ros2 topic info /cmd_vel -v            # read the node names to see WHO subscribes
+```
+
+**Speed and turn rate.** Commands are clamped to `--teleop-max-vx` / `--teleop-max-wz`
+(default **0.5 m/s**, **0.6 rad/s**) robot-side, and the in-UI speed slider scales both. The
+0.6 rad/s default matches the deployed `max_vel_theta` and turns slowly by hand — raise it
+for snappier rotation:
+
+```bash
+./start_bridge.sh 2d --teleop-max-wz 1.5      # quicker turns
+```
+
+The rover **also** clamps angular speed in `yahboom_bridge_node` (its `max_wz` param), so if
+turning still feels capped after raising `--teleop-max-wz`, that param is the next ceiling.
+On a mecanum chassis, "drifts sideways instead of turning" usually means the stick is
+**diagonal** (any forward component arcs the path) — for a pure pivot push the pad fully
+left/right with zero forward; the yahboom log should read `cmd_vel → vx=+0.000 vy=+0.000
+wz=±…`.
+
 **Running manual drive alongside Nav2 (twist_mux).** Driving `/cmd_vel` directly fights
 the autonomous stack — they share one topic, and the higher-rate publisher wins
 unpredictably. `install_jetson.sh` installs `twist_mux` for this; a ready config ships at
@@ -125,9 +161,9 @@ The mock (`./start_bridge.sh mock`) also accepts the joystick: it can't move its
 loop, but it reflects the command into the Rotation Tracking panel so you can exercise
 the full control before trusting it on hardware.
 
-Status: the rclpy bridge compiles and is unit-tested ROS-free, but has not yet been run against
-real hardware. `stats`/`log`/`status` channels are not emitted by it yet (panels show
-"waiting for data" — scan, pose, trajectory, and ping latency all work).
+Status: the rclpy bridge runs live on the 2D stack — scan, pose, trajectory, ping latency,
+and **teleop driving the rover via `/cmd_vel`** are all confirmed on hardware.
+`stats`/`status` channels are not emitted by it yet (those panels show "waiting for data").
 
 ## Tests
 
