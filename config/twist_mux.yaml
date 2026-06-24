@@ -1,0 +1,31 @@
+# twist_mux config — lets the viewer's manual joystick override Nav2 on a shared
+# /cmd_vel without the two publishers fighting. Higher priority wins; an input
+# is ignored once it goes silent for `timeout` seconds (so releasing the
+# joystick hands control straight back to Nav2).
+#
+# Wiring (the muxer's OUTPUT replaces whatever currently writes /cmd_vel):
+#
+#   teleop  : robot_gui bridge  --teleop-topic /cmd_vel_teleop   (priority 100)
+#   nav     : Nav2 / velocity_smoother output -> /cmd_vel_nav     (priority 10)
+#   output  : cmd_vel_out -> /cmd_vel  (consumed by yahboom_bridge_node)
+#
+# Launch (on the Jetson, ROS2 sourced):
+#   ros2 run twist_mux twist_mux --ros-args \
+#       --params-file config/twist_mux.yaml \
+#       -r cmd_vel_out:=/cmd_vel
+#
+# Then point Nav2's controller/velocity_smoother output at /cmd_vel_nav in
+# slam_bringup, and start the bridge with --teleop-topic /cmd_vel_teleop.
+
+twist_mux:
+  ros__parameters:
+    use_sim_time: false
+    topics:
+      navigation:
+        topic: cmd_vel_nav
+        timeout: 0.5
+        priority: 10
+      teleop:
+        topic: cmd_vel_teleop
+        timeout: 0.5
+        priority: 100

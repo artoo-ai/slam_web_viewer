@@ -36,6 +36,24 @@ if ! python3 -m ensurepip --version &>/dev/null; then
     sudo apt-get install -y python3-venv
 fi
 
+# twist_mux: priority muxer so manual teleop (/cmd_vel_teleop) and Nav2
+# (/cmd_vel_nav) can share the rover's single /cmd_vel input instead of
+# fighting over it. OPTIONAL — the bridge drives /cmd_vel directly without it
+# (fine for manual-only) — so a failed install only warns, never aborts.
+TWIST_MUX_PKG="ros-${ROS_DISTRO:-humble}-twist-mux"
+if ros2 pkg prefix twist_mux &>/dev/null; then
+    echo "-- twist_mux already installed"
+else
+    echo "-- installing $TWIST_MUX_PKG via apt (sudo may prompt for password)"
+    if sudo apt-get install -y "$TWIST_MUX_PKG"; then
+        echo "   twist_mux OK"
+    else
+        echo "WARNING: could not install $TWIST_MUX_PKG. Teleop still works on" >&2
+        echo "         /cmd_vel directly; install it later to run manual drive" >&2
+        echo "         alongside Nav2 (see config/twist_mux.yaml)." >&2
+    fi
+fi
+
 # a venv without pip is a half-created leftover from a failed attempt
 if [[ -e "$VENV" && ! -x "$VENV/bin/pip" ]]; then
     echo "-- removing broken venv: $VENV"

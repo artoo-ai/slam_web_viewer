@@ -101,9 +101,24 @@ publishes a zero `Twist` the moment the stream lapses. Commands are clamped to
 ./start_bridge.sh 2d --teleop-topic /cmd_vel_teleop   # feed a twist_mux input instead
 ```
 
-> With Nav2 running, driving `/cmd_vel` directly fights the autonomous stack. Point
-> `--teleop-topic` at a `twist_mux` input (e.g. `/cmd_vel_teleop`) so manual and Nav2
-> commands are prioritized rather than colliding.
+**Running manual drive alongside Nav2 (twist_mux).** Driving `/cmd_vel` directly fights
+the autonomous stack — they share one topic, and the higher-rate publisher wins
+unpredictably. `install_jetson.sh` installs `twist_mux` for this; a ready config ships at
+[`config/twist_mux.yaml`](config/twist_mux.yaml) (teleop priority 100 > nav 10, each with
+a 0.5 s release timeout). To use it:
+
+```bash
+# 1. on the Jetson, run the muxer — its output replaces /cmd_vel
+ros2 run twist_mux twist_mux --ros-args \
+    --params-file config/twist_mux.yaml -r cmd_vel_out:=/cmd_vel
+# 2. point Nav2's controller/velocity_smoother output at /cmd_vel_nav (slam_bringup)
+# 3. start the bridge so the joystick feeds the muxer, not /cmd_vel directly
+./start_bridge.sh 2d --teleop-topic /cmd_vel_teleop
+```
+
+Releasing the joystick goes silent, the teleop input times out after 0.5 s, and Nav2
+takes back `/cmd_vel` automatically. For **manual-only** driving (Nav2 idle) you don't
+need any of this — the default `/cmd_vel` works straight into `yahboom_bridge`.
 
 The mock (`./start_bridge.sh mock`) also accepts the joystick: it can't move its fixed
 loop, but it reflects the command into the Rotation Tracking panel so you can exercise
