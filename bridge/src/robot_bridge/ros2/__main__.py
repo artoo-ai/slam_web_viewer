@@ -142,11 +142,14 @@ class Ros2Bridge:
                     self.cameras[name] = topic
         elif args.camera_topic:
             self.cameras["rgb"] = args.camera_topic
+        teleop_limits = ({"max_vx": args.teleop_max_vx, "max_wz": args.teleop_max_wz}
+                         if args.teleop and args.teleop_topic else None)
         self.server = BridgeServer(
             server_name=args.name, channels=channels, app_version="0.1.0",
             command_handler=self.on_command,
             cameras=list(self.cameras) if args.mjpeg_port else [],
-            on_connect=self.on_client_connect)
+            on_connect=self.on_client_connect,
+            teleop_limits=teleop_limits)
         self.loop: asyncio.AbstractEventLoop | None = None
 
         # live stats (written by ROS thread, read by asyncio stats loop — plain

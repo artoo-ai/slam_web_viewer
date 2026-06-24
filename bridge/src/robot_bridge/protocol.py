@@ -132,7 +132,8 @@ def unpack_scan(data: bytes) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 def hello_payload(server: str, channels: list[str], app_version: str,
-                  cameras: list[str] | None = None) -> dict:
+                  cameras: list[str] | None = None,
+                  teleop: dict | None = None) -> dict:
     payload = {
         "protocol": PROTOCOL_VERSION,
         "server": server,
@@ -141,6 +142,8 @@ def hello_payload(server: str, channels: list[str], app_version: str,
     }
     if cameras:
         payload["cameras"] = cameras  # MJPEG stream names at :8080/stream/<name>
+    if teleop:
+        payload["teleop"] = teleop  # {max_vx, max_wz} — joystick maps to these
     return payload
 
 

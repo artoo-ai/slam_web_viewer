@@ -135,8 +135,12 @@ run_length 1..65535. The decoded cell count MUST equal `width * height`.
   "protocol": 1,                  // protocol version
   "server": "mock",               // "mock" | "ros2"
   "channels": ["scan", "pose"],   // channels this server will publish
-  "app_version": "0.1.0"
-}
+  "app_version": "0.1.0",
+  "teleop": { "max_vx": 0.5, "max_wz": 0.6 }  // present iff teleop advertised:
+}                                 // the HARD cmd_vel ceiling (m/s, rad/s). The
+                                  // client maps its joystick to these and may
+                                  // pick a lower effective max; the bridge
+                                  // re-clamps every cmd_vel to them regardless.
 ```
 
 ### Reserved (documented now, implemented in later slices)

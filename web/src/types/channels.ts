@@ -7,6 +7,8 @@ export interface HelloPayload {
   app_version: string
   /** MJPEG stream names served at :8080/stream/<name> (1-4 cameras) */
   cameras?: string[]
+  /** hard teleop ceiling (m/s, rad/s); present iff teleop is advertised */
+  teleop?: { max_vx: number; max_wz: number }
 }
 
 export interface PosePayload {

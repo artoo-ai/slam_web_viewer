@@ -121,21 +121,27 @@ ros2 topic info /cmd_vel               # Publisher count: 1, Subscription count:
 ros2 topic info /cmd_vel -v            # read the node names to see WHO subscribes
 ```
 
-**Speed and turn rate.** Commands are clamped to `--teleop-max-vx` / `--teleop-max-wz`
-(default **0.5 m/s**, **0.6 rad/s**) robot-side, and the in-UI speed slider scales both. The
-0.6 rad/s default matches the deployed `max_vel_theta` and turns slowly by hand — raise it
-for snappier rotation:
+**Speed and turn rate.** `--teleop-max-vx` / `--teleop-max-wz` (default **0.5 m/s**,
+**0.6 rad/s**) are the **hard ceiling**: the bridge advertises them in `hello`, the joystick
+maps full deflection to them, and the bridge re-clamps every command to them. The default
+0.6 rad/s matches the deployed `max_vel_theta` and turns slowly by hand — raise the ceiling
+to allow snappier rotation:
 
 ```bash
-./start_bridge.sh 2d --teleop-max-wz 1.5      # quicker turns
+./start_bridge.sh 2d --teleop-max-wz 1.5      # ceiling for quicker turns
 ```
 
+Within that ceiling the Manual Drive panel has **live `fwd` and `turn` sliders** — tune the
+effective top speed/turn rate in the browser with no restart (they can't exceed the bridge
+ceiling, which stays the safety limit). So: set a generous ceiling once with the flag, then
+dial it in live.
+
 The rover **also** clamps angular speed in `yahboom_bridge_node` (its `max_wz` param), so if
-turning still feels capped after raising `--teleop-max-wz`, that param is the next ceiling.
-On a mecanum chassis, "drifts sideways instead of turning" usually means the stick is
-**diagonal** (any forward component arcs the path) — for a pure pivot push the pad fully
-left/right with zero forward; the yahboom log should read `cmd_vel → vx=+0.000 vy=+0.000
-wz=±…`.
+turning still feels capped after raising the ceiling *and* the UI slider, that param is the
+next limit. On a mecanum chassis, "drifts sideways instead of turning" usually means the
+stick is **diagonal** (any forward component arcs the path) — for a pure pivot push the pad
+fully left/right with zero forward; the yahboom log should read `cmd_vel → vx=+0.000
+vy=+0.000 wz=±…`.
 
 **Running manual drive alongside Nav2 (twist_mux).** Driving `/cmd_vel` directly fights
 the autonomous stack — they share one topic, and the higher-rate publisher wins

@@ -2,11 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { connection } from '../../lib/transport/connection'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { useLayersStore } from '../../stores/layersStore'
-import {
-  useTeleopStore,
-  TELEOP_MAX_VX,
-  TELEOP_MAX_WZ,
-} from '../../stores/teleopStore'
+import { useTeleopStore, MIN_MAX } from '../../stores/teleopStore'
 import './panels.css'
 
 /** Manual-drive joystick. Drag the pad (or hold WASD / arrow keys) to stream a
@@ -31,11 +27,20 @@ export function TeleopPanel() {
     (s) => s.hello?.channels.includes('teleop') ?? false,
   )
   const open = useConnectionStore((s) => s.status === 'open')
+  const teleopCaps = useConnectionStore((s) => s.hello?.teleop)
 
   const armed = useTeleopStore((s) => s.armed)
-  const scale = useTeleopStore((s) => s.scale)
   const vx = useTeleopStore((s) => s.vx)
   const wz = useTeleopStore((s) => s.wz)
+  const maxVx = useTeleopStore((s) => s.maxVx)
+  const maxWz = useTeleopStore((s) => s.maxWz)
+  const ceilVx = useTeleopStore((s) => s.ceilVx)
+  const ceilWz = useTeleopStore((s) => s.ceilWz)
+
+  // adopt the bridge-advertised hard ceiling when hello arrives
+  useEffect(() => {
+    if (teleopCaps) useTeleopStore.getState().setCeiling(teleopCaps.max_vx, teleopCaps.max_wz)
+  }, [teleopCaps])
 
   const padRef = useRef<HTMLDivElement>(null)
   const [knob, setKnob] = useState({ x: 0, y: 0 }) // px offset from pad center
@@ -175,17 +180,33 @@ export function TeleopPanel() {
         <span>wz {wz.toFixed(2)} rad/s</span>
       </div>
 
-      <div className="teleop-slider" title="Soft speed governor (scales the max).">
-        <span>speed</span>
+      <div className="teleop-slider"
+           title="Top forward speed at full stick, up to the bridge ceiling.">
+        <span>fwd</span>
         <input
           type="range"
-          min={0.1}
-          max={1}
+          min={MIN_MAX}
+          max={ceilVx}
           step={0.05}
-          value={scale}
-          onChange={(e) => useTeleopStore.getState().setScale(Number(e.target.value))}
+          value={maxVx}
+          onChange={(e) => useTeleopStore.getState().setMaxVx(Number(e.target.value))}
         />
-        <span className="teleop-pct">{Math.round(scale * 100)}%</span>
+        <span className="teleop-pct">{maxVx.toFixed(2)}</span>
+      </div>
+
+      <div className="teleop-slider"
+           title="Top turn rate at full stick, up to the bridge ceiling. Raise the
+ceiling with the bridge's --teleop-max-wz; this slider tunes within it live.">
+        <span>turn</span>
+        <input
+          type="range"
+          min={MIN_MAX}
+          max={ceilWz}
+          step={0.05}
+          value={maxWz}
+          onChange={(e) => useTeleopStore.getState().setMaxWz(Number(e.target.value))}
+        />
+        <span className="teleop-pct">{maxWz.toFixed(2)}</span>
       </div>
 
       <div className="teleop-row">
@@ -207,7 +228,9 @@ export function TeleopPanel() {
         )}
       </div>
       <div className="teleop-hint">
-        {armed ? 'drag pad or hold W A S D / arrows' : `≤ ${TELEOP_MAX_VX} m/s · ≤ ${TELEOP_MAX_WZ} rad/s`}
+        {armed
+          ? 'drag pad or hold W A S D / arrows'
+          : `ceiling ${ceilVx.toFixed(1)} m/s · ${ceilWz.toFixed(1)} rad/s`}
       </div>
     </section>
   )

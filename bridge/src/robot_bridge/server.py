@@ -125,12 +125,16 @@ class BridgeServer:
     def __init__(self, *, server_name: str, channels: list[str], app_version: str,
                  command_handler: CommandHandler | None = None,
                  cameras: list[str] | None = None,
-                 on_connect: Callable[["Client"], Awaitable[None]] | None = None):
+                 on_connect: Callable[["Client"], Awaitable[None]] | None = None,
+                 teleop_limits: dict | None = None):
         self.on_connect = on_connect
         self.server_name = server_name
         self.channels = channels
         self.app_version = app_version
         self.cameras = cameras or []
+        # hard teleop ceiling advertised in hello ({max_vx, max_wz}); the client
+        # maps its joystick to these and the bridge re-clamps to them
+        self.teleop_limits = teleop_limits
         self.command_handler = command_handler
         self.clients: set[Client] = set()
         self._seq: dict[str, int] = {}
@@ -179,7 +183,8 @@ class BridgeServer:
             await client.send_reliable(protocol.make_frame(
                 protocol.CH_HELLO,
                 protocol.hello_payload(self.server_name, self.channels,
-                                       self.app_version, self.cameras),
+                                       self.app_version, self.cameras,
+                                       self.teleop_limits),
                 self.next_seq(protocol.CH_HELLO)))
             if self.on_connect is not None:
                 await self.on_connect(client)

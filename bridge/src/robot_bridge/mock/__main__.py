@@ -69,7 +69,8 @@ class MockBridge:
             server_name="mock", channels=CHANNELS, app_version="0.1.0",
             command_handler=self.on_command,
             cameras=["rgb", "depth"] if args.mjpeg_port else [],
-            on_connect=self.on_client_connect)
+            on_connect=self.on_client_connect,
+            teleop_limits={"max_vx": 0.5, "max_wz": 0.6})
         planes, boxes, cylinders = build_world()
         self.synth = ScanSynthesizer(planes, boxes, cylinders,
                                      np.random.default_rng(args.seed))
