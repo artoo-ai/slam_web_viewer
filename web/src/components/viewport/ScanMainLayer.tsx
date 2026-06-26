@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import { scanMainFeed } from '../../stores/scanMainFeed'
 import { useLayersStore } from '../../stores/layersStore'
 
-/** Main nav/SLAM band (/scan, the pointcloud_to_laserscan slice) as magenta
+/** Main nav/SLAM band (/scan, the pointcloud_to_laserscan slice) as white
  *  dots. These are the points slam_toolbox matches against and the costmap's
  *  main obstacle_layer marks — the slice of the 3D cloud that actually drives
  *  mapping and obstacle avoidance. Rendered at the points' TRUE map-frame
@@ -25,9 +25,9 @@ export function ScanMainLayer() {
     geometry.setAttribute('position', positionAttr)
     geometry.setDrawRange(0, 0)
     const material = new THREE.PointsMaterial({
-      // magenta: the one vivid hue absent from the blue→green→yellow intensity
-      // colormap (and distinct from the red low band) so the band stands out
-      color: 0xff2dd4,
+      // white: distinct from BOTH the blue→green→yellow intensity colormap AND
+      // the red low band (green blended with the cloud, magenta with the red)
+      color: 0xffffff,
       size: 4,
       sizeAttenuation: false,
       depthWrite: false,
