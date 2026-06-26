@@ -23,7 +23,8 @@ self.onmessage = (e: MessageEvent<ArrayBuffer>) => {
   if (typeof frame?.topic !== 'string') return
 
   const binStride =
-    frame.topic === CH.SCAN || frame.topic === CH.MAP || frame.topic === CH.SCAN_LOW
+    frame.topic === CH.SCAN || frame.topic === CH.MAP ||
+    frame.topic === CH.SCAN_LOW || frame.topic === CH.SCAN_MAIN
       ? 16 // [x,y,z,intensity]
       : frame.topic === CH.DEPTH
         ? 24 // [x,y,z,r,g,b]

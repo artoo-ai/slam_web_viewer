@@ -37,6 +37,7 @@ CH_OBJECTS = "objects"  # persistent semantic objects with thumbnails
 CH_MISSION = "mission"  # high-level mission/exploration state
 CH_NODE_PARAMS = "node_params"  # deployed-config audit (docs/diagnostics.md §1)
 CH_SCAN_LOW = "scan_low"  # low obstacle band (0.05-0.15 m) laserscan, map frame — same packing as scan
+CH_SCAN_MAIN = "scan_main"  # main nav/SLAM band: the 2D /scan (pointcloud_to_laserscan), map frame — same packing as scan
 CH_TELEOP = "teleop"  # capability flag in hello.channels: server accepts cmd_vel teleop (no frames)
 
 # Per-component SLAM diagnostics (docs/protocol.md §diagnostics). Map payloads,
@@ -62,7 +63,7 @@ DEPTH_STRIDE_BYTES = 24  # float32 x, y, z, r, g, b
 NAV_STATES = ("accepted", "navigating", "succeeded", "aborted", "canceled", "rejected")
 
 # Channels that must be dropped (never queued) on client backpressure
-DROPPABLE_CHANNELS = frozenset({CH_SCAN, CH_SCAN_LOW, "map", "depth"})
+DROPPABLE_CHANNELS = frozenset({CH_SCAN, CH_SCAN_LOW, CH_SCAN_MAIN, "map", "depth"})
 
 SCAN_STRIDE_BYTES = 16  # float32 x, y, z, intensity
 

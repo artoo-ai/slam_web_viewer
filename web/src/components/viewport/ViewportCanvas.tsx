@@ -2,6 +2,7 @@ import { Canvas } from '@react-three/fiber'
 import { Grid, OrbitControls } from '@react-three/drei'
 import { PointCloudViewer } from './PointCloudViewer'
 import { ScanLowLayer } from './ScanLowLayer'
+import { ScanMainLayer } from './ScanMainLayer'
 import { DepthPointsLayer } from './DepthPointsLayer'
 import { MapPointsLayer } from './MapPointsLayer'
 import { TrajectoryOverlay } from './TrajectoryOverlay'
@@ -38,6 +39,7 @@ export function ViewportCanvas() {
       <axesHelper args={[1]} />
       <PointCloudViewer />
       <ScanLowLayer />
+      <ScanMainLayer />
       <DepthPointsLayer />
       <MapPointsLayer />
       <TrajectoryOverlay />

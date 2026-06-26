@@ -25,7 +25,7 @@ from .world import build_world
 
 log = logging.getLogger("robot_bridge.mock")
 
-CHANNELS = ["scan", "map", "scan_low", "depth", "pose", "stats", "log", "status", "occupancy_grid",
+CHANNELS = ["scan", "map", "scan_low", "scan_main", "depth", "pose", "stats", "log", "status", "occupancy_grid",
             "nav_status", "nav_path", "velocity", "imu", "objects", "mission",
             "node_params",
             # teleop capability: the mock accepts cmd_vel and reflects it into the
@@ -199,6 +199,10 @@ class MockBridge:
                 if low is not None:
                     self.server.broadcast(protocol.CH_SCAN_LOW,
                                           protocol.pack_scan(low))
+                main = self._scan_main(xyzi)
+                if main is not None:
+                    self.server.broadcast(protocol.CH_SCAN_MAIN,
+                                          protocol.pack_scan(main))
                 delta = self.mapacc.add_scan(xyzi)
                 if delta is not None:
                     self.server.broadcast(protocol.CH_MAP, protocol.pack_scan(delta))
@@ -561,6 +565,16 @@ class MockBridge:
         z = np.full_like(x, 0.08)
         i = np.full_like(x, 0.6)
         return np.column_stack([x, y, z, i]).astype(np.float32)
+
+    # The main nav/SLAM band: the cloud points pointcloud_to_laserscan would
+    # flatten into /scan (here the [0.15, 0.45] m height slice). Demoes the
+    # GUI's "Scan Band" layer — the points that feed slam_toolbox + obstacle_layer.
+    def _scan_main(self, xyzi):
+        if len(xyzi) == 0:
+            return None
+        z = xyzi[:, 2]
+        band = xyzi[(z >= 0.15) & (z <= 0.45)]
+        return band if len(band) else None
 
 
 def main():

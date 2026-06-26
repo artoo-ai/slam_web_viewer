@@ -273,7 +273,8 @@
 /* ---- teleop joystick (floating, top-right of the viewport) ---- */
 .teleop {
   position: absolute;
-  top: 12px;
+  /* clear the rotation/odometry alert stack that floats along the top edge */
+  top: 132px;
   right: 12px;
   width: 178px;
   display: flex;

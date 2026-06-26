@@ -22,6 +22,7 @@ export const CH = {
   OBJECTS: 'objects',
   MISSION: 'mission',
   SCAN_LOW: 'scan_low',
+  SCAN_MAIN: 'scan_main',
   DEPTH: 'depth',
   // per-component SLAM diagnostics (DiagnosticsCard)
   RF2O_DIAG: 'rf2o_diag',

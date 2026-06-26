@@ -115,6 +115,11 @@ class Ros2Bridge:
             channels += ["scan", "map"]
         if args.scan_low_topic:
             channels.append("scan_low")
+        # the 2D /scan nav band, forwarded as its own layer so you can see which
+        # cloud points feed slam_toolbox + the main obstacle_layer. Only when the
+        # main `scan` channel is a 3D cloud (else /scan IS the scan channel).
+        if args.scan2d_topic and args.scan_msg != "laserscan" and args.scan2d_points:
+            channels.append("scan_main")
         if args.teleop and args.teleop_topic:
             channels.append("teleop")  # capability flag: bridge accepts cmd_vel
         if args.depth_topic:
@@ -285,14 +290,16 @@ class Ros2Bridge:
                                      self.on_cmd_vel, 10)
             subscribed.append(self.args.cmd_vel_topic)
         # watch the 2D /scan that rf2o consumes — distinct from the 3D cloud;
-        # it's the input whose silent death corrupts maps (rate goes into stats)
+        # it's the input whose silent death corrupts maps (rate goes into stats).
+        # With --scan2d-points (default) also forward its points as the scan_main
+        # layer so the main nav/SLAM band is visible inside the 3D cloud.
         if self.args.scan2d_topic and self.args.scan_msg != "laserscan":
             from sensor_msgs.msg import LaserScan
             from rclpy.qos import qos_profile_sensor_data
             node.create_subscription(LaserScan, self.args.scan2d_topic,
-                                     lambda _msg: self._count_scan2d(),
-                                     qos_profile_sensor_data)
-            subscribed.append(f"{self.args.scan2d_topic} (watch)")
+                                     self.on_scan2d, qos_profile_sensor_data)
+            mode = "watch+layer" if self.args.scan2d_points else "watch"
+            subscribed.append(f"{self.args.scan2d_topic} ({mode})")
         # Low obstacle band (slam_bringup /scan_low, 0.05-0.15 m): the
         # ankle-height clutter the costmap dodges (dog bowls, shoes).
         # Rendered as its own GUI layer so "why did it swerve" is visible.
@@ -610,8 +617,26 @@ class Ros2Bridge:
         msg.angular.z = float(wz)
         self._teleop_pub.publish(msg)
 
-    def _count_scan2d(self) -> None:
+    def on_scan2d(self, msg) -> None:
+        """The 2D /scan (rf2o's input): count it for the scan2d_hz stat, and
+        with --scan2d-points forward its points as the scan_main layer — the
+        main nav/SLAM band, so you can see which cloud points feed slam_toolbox
+        and the main obstacle_layer. Rendered at true map-frame height (unlike
+        scan_low, which is flattened to the floor)."""
         self.scan2d_count += 1
+        if not self.args.scan2d_points:
+            return
+        xyzi = laserscan_to_xyzi(msg)
+        if len(xyzi) == 0:
+            return
+        frame = msg.header.frame_id
+        if frame and frame != "map":
+            tq = self._lookup_map_tf(frame, msg.header.stamp)
+            if tq is None:
+                return
+            xyzi = transform_xyzi(xyzi, *tq)
+        self._post(protocol.CH_SCAN_MAIN, protocol.pack_scan(xyzi),
+                   stamp_to_seconds(msg.header.stamp))
 
     def on_rosout(self, msg) -> None:
         """Forward relevant /rosout lines to the log channel — frontier picks,
@@ -1333,6 +1358,12 @@ def main() -> None:
                         help="keep every k-th depth point (organized 848x480 is huge)")
     parser.add_argument("--scan2d-topic", default="/scan",
                         help="2D LaserScan to watch (rf2o's input; '' disables)")
+    parser.add_argument("--scan2d-points", action="store_true", default=True,
+                        help="forward the 2D /scan points as the scan_main layer "
+                             "(the main nav/SLAM band, visible in the cloud)")
+    parser.add_argument("--no-scan2d-points", dest="scan2d_points",
+                        action="store_false",
+                        help="only count /scan for the rate stat, don't forward points")
     # per-component diagnostics inputs (see DiagnosticsCard in the viewer)
     parser.add_argument("--slam-graph-topic",
                         default="/slam_toolbox/graph_visualization",

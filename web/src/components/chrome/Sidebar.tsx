@@ -34,6 +34,8 @@ const LAYERS: { key: keyof LayerVisibility; label: string; tip: string }[] = [
     tip: 'The latest single LiDAR sweep (~1 frame). Shows what the sensor sees RIGHT NOW. If this lags or tears during rotation, odometry is struggling to keep up.' },
   { key: 'scan_low', label: 'Low Obstacles',
     tip: 'The 0.05–0.15 m slice (/scan_low) feeding the costmap’s low_obstacle_layer — dog bowls, shoes, anything below the main scan band. Red dots hugging the floor. If the robot swerves around “nothing”, this layer shows the something.' },
+  { key: 'scan_main', label: 'Scan Band',
+    tip: 'The main nav/SLAM band (/scan): the cloud slice pointcloud_to_laserscan flattens into the 2D scan that slam_toolbox and the costmap’s main obstacle_layer use. Green dots at their true height — shows which part of the point cloud actually drives mapping and obstacle avoidance.' },
   { key: 'depth_points', label: 'Depth Camera',
     tip: 'True-color point cloud from the depth camera (D435) — the camera’s view in 3D, complementing the LiDAR. Needs pointcloud.enable=true on the camera node (Remote Param: node d435_front/camera).' },
   { key: 'map_points', label: 'Map Points',

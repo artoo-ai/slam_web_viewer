@@ -11,6 +11,7 @@ import { useConnectionStore } from '../../stores/connectionStore'
 import { useTelemetryStore } from '../../stores/telemetryStore'
 import { scanFeed } from '../../stores/scanFeed'
 import { scanLowFeed } from '../../stores/scanLowFeed'
+import { scanMainFeed } from '../../stores/scanMainFeed'
 import { depthFeed } from '../../stores/depthFeed'
 import { poseFeed } from '../../stores/poseFeed'
 import { gridFeed } from '../../stores/gridFeed'
@@ -135,6 +136,9 @@ class Connection {
         break
       case CH.SCAN_LOW:
         if (frame.points) scanLowFeed.push(frame.points, frame.seq)
+        break
+      case CH.SCAN_MAIN:
+        if (frame.points) scanMainFeed.push(frame.points, frame.seq)
         break
       case CH.DEPTH:
         if (frame.points) depthFeed.push(frame.points, frame.seq)

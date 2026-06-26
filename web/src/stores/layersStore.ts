@@ -6,6 +6,7 @@ import { create } from 'zustand'
 export interface LayerVisibility {
   scan: boolean
   scan_low: boolean
+  scan_main: boolean
   depth_points: boolean
   map_points: boolean
   trajectory: boolean
@@ -27,6 +28,7 @@ interface LayersState extends LayerVisibility {
 export const useLayersStore = create<LayersState>((set) => ({
   scan: true,
   scan_low: true,
+  scan_main: true,
   depth_points: true,
   map_points: true,
   trajectory: true,
