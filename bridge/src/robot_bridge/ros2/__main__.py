@@ -115,10 +115,12 @@ class Ros2Bridge:
             channels += ["scan", "map"]
         if args.scan_low_topic:
             channels.append("scan_low")
-        # the 2D /scan nav band, forwarded as its own layer so you can see which
-        # cloud points feed slam_toolbox + the main obstacle_layer. Only when the
-        # main `scan` channel is a 3D cloud (else /scan IS the scan channel).
-        if args.scan2d_topic and args.scan_msg != "laserscan" and args.scan2d_points:
+        # the main nav/SLAM band as its own layer: the cloud slice
+        # [scan_band_min, scan_band_max] that pointcloud_to_laserscan flattens
+        # into /scan (slam_toolbox + the main obstacle_layer). Shown at true
+        # height so it reads as a slab ABOVE the low band. Needs a 3D cloud to
+        # slice (when scan_msg is already a laserscan there's nothing to slice).
+        if args.scan_topic and args.scan_msg != "laserscan" and args.scan_band:
             channels.append("scan_main")
         if args.teleop and args.teleop_topic:
             channels.append("teleop")  # capability flag: bridge accepts cmd_vel
@@ -290,16 +292,14 @@ class Ros2Bridge:
                                      self.on_cmd_vel, 10)
             subscribed.append(self.args.cmd_vel_topic)
         # watch the 2D /scan that rf2o consumes — distinct from the 3D cloud;
-        # it's the input whose silent death corrupts maps (rate goes into stats).
-        # With --scan2d-points (default) also forward its points as the scan_main
-        # layer so the main nav/SLAM band is visible inside the 3D cloud.
+        # it's the input whose silent death corrupts maps (rate goes into stats)
         if self.args.scan2d_topic and self.args.scan_msg != "laserscan":
             from sensor_msgs.msg import LaserScan
             from rclpy.qos import qos_profile_sensor_data
             node.create_subscription(LaserScan, self.args.scan2d_topic,
-                                     self.on_scan2d, qos_profile_sensor_data)
-            mode = "watch+layer" if self.args.scan2d_points else "watch"
-            subscribed.append(f"{self.args.scan2d_topic} ({mode})")
+                                     lambda _msg: self._count_scan2d(),
+                                     qos_profile_sensor_data)
+            subscribed.append(f"{self.args.scan2d_topic} (watch)")
         # Low obstacle band (slam_bringup /scan_low, 0.05-0.15 m): the
         # ankle-height clutter the costmap dodges (dog bowls, shoes).
         # Rendered as its own GUI layer so "why did it swerve" is visible.
@@ -514,6 +514,16 @@ class Ros2Bridge:
         self.total_pts += len(xyzi)
         ts = stamp_to_seconds(header.stamp)
         self._post(protocol.CH_SCAN, protocol.pack_scan(xyzi), ts)
+        # scan_main layer: the height slice [band_min, band_max] of THIS cloud —
+        # the points pointcloud_to_laserscan flattens into the main 2D /scan
+        # (slam_toolbox + obstacle_layer). Shown at true height (a slab above the
+        # low band), unlike the flattened /scan ring which sits at the laser frame.
+        if self.args.scan_band and self.args.scan_msg != "laserscan" and len(xyzi):
+            import numpy as np
+            z = xyzi[:, 2]
+            band = xyzi[(z >= self.args.scan_band_min) & (z <= self.args.scan_band_max)]
+            if len(band):
+                self._post(protocol.CH_SCAN_MAIN, protocol.pack_scan(band), ts)
         if transformed:
             delta = self.mapacc.add_scan(xyzi)
             if delta is not None:
@@ -617,26 +627,8 @@ class Ros2Bridge:
         msg.angular.z = float(wz)
         self._teleop_pub.publish(msg)
 
-    def on_scan2d(self, msg) -> None:
-        """The 2D /scan (rf2o's input): count it for the scan2d_hz stat, and
-        with --scan2d-points forward its points as the scan_main layer — the
-        main nav/SLAM band, so you can see which cloud points feed slam_toolbox
-        and the main obstacle_layer. Rendered at true map-frame height (unlike
-        scan_low, which is flattened to the floor)."""
+    def _count_scan2d(self) -> None:
         self.scan2d_count += 1
-        if not self.args.scan2d_points:
-            return
-        xyzi = laserscan_to_xyzi(msg)
-        if len(xyzi) == 0:
-            return
-        frame = msg.header.frame_id
-        if frame and frame != "map":
-            tq = self._lookup_map_tf(frame, msg.header.stamp)
-            if tq is None:
-                return
-            xyzi = transform_xyzi(xyzi, *tq)
-        self._post(protocol.CH_SCAN_MAIN, protocol.pack_scan(xyzi),
-                   stamp_to_seconds(msg.header.stamp))
 
     def on_rosout(self, msg) -> None:
         """Forward relevant /rosout lines to the log channel — frontier picks,
@@ -1358,12 +1350,20 @@ def main() -> None:
                         help="keep every k-th depth point (organized 848x480 is huge)")
     parser.add_argument("--scan2d-topic", default="/scan",
                         help="2D LaserScan to watch (rf2o's input; '' disables)")
-    parser.add_argument("--scan2d-points", action="store_true", default=True,
-                        help="forward the 2D /scan points as the scan_main layer "
-                             "(the main nav/SLAM band, visible in the cloud)")
-    parser.add_argument("--no-scan2d-points", dest="scan2d_points",
-                        action="store_false",
-                        help="only count /scan for the rate stat, don't forward points")
+    # scan_main layer: the cloud slice that feeds the 2D /scan (the main
+    # nav/SLAM band), shown at true height above the low band.
+    parser.add_argument("--scan-band", action="store_true", default=True,
+                        help="emit the scan_main layer: the cloud slice "
+                             "[--scan-band-min, --scan-band-max] feeding the main "
+                             "2D /scan obstacle_layer (visible above the low band)")
+    parser.add_argument("--no-scan-band", dest="scan_band", action="store_false",
+                        help="don't emit the scan_main layer")
+    parser.add_argument("--scan-band-min", type=float, default=0.15,
+                        help="scan_main slice min height, m (matches slam_bringup "
+                             "scan_z_min)")
+    parser.add_argument("--scan-band-max", type=float, default=0.45,
+                        help="scan_main slice max height, m (matches slam_bringup "
+                             "scan_z_max)")
     # per-component diagnostics inputs (see DiagnosticsCard in the viewer)
     parser.add_argument("--slam-graph-topic",
                         default="/slam_toolbox/graph_visualization",
