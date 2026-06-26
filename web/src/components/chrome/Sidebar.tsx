@@ -35,7 +35,7 @@ const LAYERS: { key: keyof LayerVisibility; label: string; tip: string }[] = [
   { key: 'scan_low', label: 'Low Obstacles',
     tip: 'The 0.05–0.15 m slice (/scan_low) feeding the costmap’s low_obstacle_layer — dog bowls, shoes, anything below the main scan band. Red dots hugging the floor. If the robot swerves around “nothing”, this layer shows the something.' },
   { key: 'scan_main', label: 'Scan Band',
-    tip: 'The main nav/SLAM band: the 0.15–0.45 m cloud slice that pointcloud_to_laserscan flattens into the 2D /scan feeding slam_toolbox and the costmap’s main obstacle_layer. Green dots at their true height — a slab ABOVE the red low-obstacle band — showing which part of the point cloud drives mapping and obstacle avoidance.' },
+    tip: 'The main nav/SLAM band: the 0.15–0.45 m cloud slice that pointcloud_to_laserscan flattens into the 2D /scan feeding slam_toolbox and the costmap’s main obstacle_layer. Magenta dots at their true height — a slab ABOVE the red low-obstacle band — showing which part of the point cloud drives mapping and obstacle avoidance.' },
   { key: 'depth_points', label: 'Depth Camera',
     tip: 'True-color point cloud from the depth camera (D435) — the camera’s view in 3D, complementing the LiDAR. Needs pointcloud.enable=true on the camera node (Remote Param: node d435_front/camera).' },
   { key: 'map_points', label: 'Map Points',
