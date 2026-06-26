@@ -170,6 +170,13 @@ class Ros2Bridge:
         self.total_pts = 0
         self._scan_frames_last = 0
 
+        # scan_main height slice — CLI value is the fallback; _fetch_scan_band
+        # overrides it with the live pointcloud_to_laserscan node's
+        # min_height/max_height so the layer tracks the deployed config.
+        self._scan_band = (args.scan_band_min, args.scan_band_max)
+        self._scan_band_tries = 0
+        self._scan_band_timer = None
+
         # velocity comparison (smear detector food): latest commanded and
         # measured body velocities, written by ROS callbacks
         self.cmd_vel = (0.0, 0.0)   # vx, wz
@@ -415,6 +422,11 @@ class Ros2Bridge:
         node.create_timer(0.05, self._drain_jobs)
         # watch map->odom for SLAM correction jumps (re-bake the 3D map)
         node.create_timer(1.0, self._check_map_correction)
+        # pull the scan_main slice heights from the live p2l node (retries until
+        # it answers, then cancels itself); CLI values stand in until it does
+        if self.args.scan_band and self.args.scan_msg != "laserscan" \
+                and self.args.scan_topic:
+            self._scan_band_timer = node.create_timer(2.0, self._fetch_scan_band)
 
         log.info("rclpy spinning: %s", ", ".join(subscribed))
         self.log_clients("info", f"bridge up: {', '.join(subscribed)}")
@@ -519,9 +531,9 @@ class Ros2Bridge:
         # (slam_toolbox + obstacle_layer). Shown at true height (a slab above the
         # low band), unlike the flattened /scan ring which sits at the laser frame.
         if self.args.scan_band and self.args.scan_msg != "laserscan" and len(xyzi):
-            import numpy as np
+            lo, hi = self._scan_band
             z = xyzi[:, 2]
-            band = xyzi[(z >= self.args.scan_band_min) & (z <= self.args.scan_band_max)]
+            band = xyzi[(z >= lo) & (z <= hi)]
             if len(band):
                 self._post(protocol.CH_SCAN_MAIN, protocol.pack_scan(band), ts)
         if transformed:
@@ -629,6 +641,44 @@ class Ros2Bridge:
 
     def _count_scan2d(self) -> None:
         self.scan2d_count += 1
+
+    def _fetch_scan_band(self) -> None:
+        """Pull the scan_main slice heights from the live pointcloud_to_laserscan
+        node (min_height/max_height) so the layer matches the deployed config
+        instead of the CLI default. The node may start after the bridge, so this
+        runs on a 2 s timer and retries until the service answers (then cancels);
+        gives up after 5 tries and keeps the CLI fallback."""
+        if self._node is None:
+            return
+        from rcl_interfaces.srv import GetParameters
+        self._scan_band_tries += 1
+        cli = self._node.create_client(
+            GetParameters, f"/{self.args.scan_band_node}/get_parameters")
+        if not cli.service_is_ready():
+            self._node.destroy_client(cli)
+            if self._scan_band_tries >= 5 and self._scan_band_timer is not None:
+                self._scan_band_timer.cancel()
+                log.info("scan_main band: %s unreachable; keeping %.2f-%.2f m (CLI)",
+                         self.args.scan_band_node, *self._scan_band)
+            return
+
+        def done(future, cli=cli):
+            try:
+                vals = future.result().values  # order matches requested names
+                lo, hi = vals[0].double_value, vals[1].double_value
+                if hi > lo:
+                    self._scan_band = (lo, hi)
+                    log.info("scan_main band from %s: %.2f-%.2f m",
+                             self.args.scan_band_node, lo, hi)
+            except Exception:  # noqa: BLE001 — service errors leave the fallback
+                pass
+            finally:
+                self._node.destroy_client(cli)
+                if self._scan_band_timer is not None:
+                    self._scan_band_timer.cancel()
+
+        cli.call_async(GetParameters.Request(
+            names=["min_height", "max_height"])).add_done_callback(done)
 
     def on_rosout(self, msg) -> None:
         """Forward relevant /rosout lines to the log channel — frontier picks,
@@ -1358,12 +1408,18 @@ def main() -> None:
                              "2D /scan obstacle_layer (visible above the low band)")
     parser.add_argument("--no-scan-band", dest="scan_band", action="store_false",
                         help="don't emit the scan_main layer")
+    parser.add_argument("--scan-band-node", default="livox_to_scan",
+                        help="pointcloud_to_laserscan node to read min_height/"
+                             "max_height from, so scan_main tracks the deployed "
+                             "config (the bridge queries it at startup)")
     parser.add_argument("--scan-band-min", type=float, default=0.15,
-                        help="scan_main slice min height, m (matches slam_bringup "
-                             "scan_z_min)")
+                        help="scan_main slice min height fallback, m (used only "
+                             "if --scan-band-node can't be queried; matches "
+                             "slam_bringup scan_z_min)")
     parser.add_argument("--scan-band-max", type=float, default=0.45,
-                        help="scan_main slice max height, m (matches slam_bringup "
-                             "scan_z_max)")
+                        help="scan_main slice max height fallback, m (used only "
+                             "if --scan-band-node can't be queried; matches "
+                             "slam_bringup scan_z_max)")
     # per-component diagnostics inputs (see DiagnosticsCard in the viewer)
     parser.add_argument("--slam-graph-topic",
                         default="/slam_toolbox/graph_visualization",
