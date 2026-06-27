@@ -5,6 +5,7 @@ import { SceneRoot } from '../../vr/SceneRoot'
 import { DesktopControls } from '../../vr/DesktopControls'
 import { Locomotion } from '../../vr/Locomotion'
 import { xrStore } from '../../vr/xrStore'
+import { VrHud } from '../../vr/VrHud'
 
 /** One Canvas for both desktop and VR. Wrapped in <XR>: with no session it
  *  renders the flat desktop scene (OrbitControls + DOM chrome). On enterVR()/
@@ -22,6 +23,7 @@ export function ViewportCanvas() {
         <SceneRoot>
           <SceneContent />
         </SceneRoot>
+        <VrHud />
       </XR>
     </Canvas>
   )
