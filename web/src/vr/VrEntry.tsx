@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { xrStore } from '../vr/xrStore'
 import { useVrStore, type VrEnvironment } from '../stores/vrModeStore'
 import './vrEntry.css'
 
@@ -24,11 +23,10 @@ export function VrEntry() {
     xr.isSessionSupported('immersive-ar').then(setArOk).catch(() => setArOk(false))
   }, [])
 
-  // Enter the session, choosing AR when available so passthrough is reachable.
+  // Mount <XR> and queue the session entry (XrAutoEnter performs it once the WebXR
+  // manager is connected). Choose AR when available so passthrough is reachable.
   const enter = (environment: VrEnvironment) => {
-    useVrStore.getState().setEnvironment(environment)
-    const start = arOk ? xrStore.enterAR() : xrStore.enterVR()
-    start.catch(() => {})
+    useVrStore.getState().requestEnter(environment, arOk)
   }
 
   if (!vrOk && !arOk) return null

@@ -30,22 +30,44 @@ interface VrState {
   joystickMode: VrJoystickMode
   viewMode: VrViewMode
   worldScale: number
+  /** whether the <XR> subtree is mounted. The flat desktop page keeps this false
+   *  because mounting <XR> with no session freezes the normal render loop; we
+   *  mount it only while entering/in VR. */
+  xrActive: boolean
+  /** a pending session entry consumed once <XR> has mounted (so requestSession
+   *  runs after the WebXR manager is connected, still within user activation) */
+  pendingEnter: { ar: boolean } | null
   setMode: (mode: VrSessionMode) => void
   setEnvironment: (environment: VrEnvironment) => void
   setJoystickMode: (joystickMode: VrJoystickMode) => void
   setViewMode: (viewMode: VrViewMode) => void
   setWorldScale: (scale: number) => void
+  /** mount <XR> and queue a session entry (called from the Enter VR/AR buttons) */
+  requestEnter: (environment: VrEnvironment, ar: boolean) => void
+  /** read & clear the pending entry (called by XrAutoEnter on mount) */
+  consumePending: () => { ar: boolean } | null
+  /** unmount <XR> and restore flat rendering (on session end or entry failure) */
+  exitXr: () => void
 }
 
-export const useVrStore = create<VrState>((set) => ({
+export const useVrStore = create<VrState>((set, get) => ({
   mode: 'none',
   environment: 'void',
   joystickMode: 'move',
   viewMode: 'free',
   worldScale: 1,
+  xrActive: false,
+  pendingEnter: null,
   setMode: (mode) => set({ mode }),
   setEnvironment: (environment) => set({ environment }),
   setJoystickMode: (joystickMode) => set({ joystickMode }),
   setViewMode: (viewMode) => set({ viewMode }),
   setWorldScale: (scale) => set({ worldScale: clampWorldScale(scale) }),
+  requestEnter: (environment, ar) => set({ environment, pendingEnter: { ar }, xrActive: true }),
+  consumePending: () => {
+    const p = get().pendingEnter
+    set({ pendingEnter: null })
+    return p
+  },
+  exitXr: () => set({ xrActive: false, pendingEnter: null }),
 }))
