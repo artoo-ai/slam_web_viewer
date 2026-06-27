@@ -36,7 +36,8 @@ cd web
 npm run dev
 ```
 
-Open http://localhost:5173 — you should see a live synthetic point-cloud room, the robot's
+Open https://localhost:5173 (the dev server is HTTPS so WebXR/Quest works; accept the
+self-signed cert once) — you should see a live synthetic point-cloud room, the robot's
 trajectory, and the full panel stack: camera (MJPEG from `:8080/stream/rgb`, `?cam=` overrides),
 layer toggles (map / costmaps / path), rotation tracking with the map-smear alarm, navigation
 (double-click the floor to send a goal), parameters (point size, intensity/height color mode,
@@ -170,6 +171,44 @@ the full control before trusting it on hardware.
 Status: the rclpy bridge runs live on the 2D stack — scan, pose, trajectory, ping latency,
 and **teleop driving the rover via `/cmd_vel`** are all confirmed on hardware.
 `stats`/`status` channels are not emitted by it yet (those panels show "waiting for data").
+
+## Meta Quest VR (WebXR)
+
+The viewer runs inside a Meta Quest headset from the **same codebase and same URL** — the
+3D scene renders in stereo and you move through the point cloud, with the panels floating
+as an in-scene HUD. No app install, nothing from the Meta Store.
+
+WebXR requires a **secure context**, so the dev server is served over HTTPS
+(`@vitejs/plugin-basic-ssl`) and exposed on the LAN (`server.host`). `npm run dev` prints
+both a `Local: https://localhost:5173/` and `Network: https://<lan-ip>:5173/` line.
+
+**On the Quest:**
+
+1. Make sure the headset is on the **same Wi-Fi** as the Mac running `npm run dev`.
+2. In the **Meta Quest Browser**, open the **Network** URL, e.g. `https://192.168.1.16:5173/`
+   (use the Mac's Wi-Fi IP), and accept the self-signed cert warning once.
+3. Tap **Enter VR** (or **Enter Passthrough**) — these in-page buttons start the immersive
+   WebXR session; it is not browser fullscreen. The flat page drops away and you're inside
+   the scene.
+4. Exit with the Meta/Oculus button.
+
+**Locomotion:** physically walk within your room-scale boundary; point a controller at the
+floor and pull the trigger to **teleport**; **squeeze both grips and move your hands apart/
+together** to scale the whole map (tabletop ↔ walk-inside).
+
+**Live data over `wss://` (the `/bridge` proxy).** An HTTPS page cannot open a plain
+`ws://` socket to a remote host (mixed content). So on an HTTPS page the viewer connects to
+the **same-origin** `wss://<host>/bridge`, which the Vite dev server **TLS-terminates and
+proxies** to the local `ws://localhost:9090` bridge (see `web/vite.config.ts`). Net effect:
+run `./start_bridge.sh mock` + `npm run dev` on the Mac, open the Network URL on the Quest,
+and live data flows into the headset with **no env vars**. (URL precedence is still
+`?ws=` → `VITE_BRIDGE_URL` → derived default.) For a production/Jetson deploy, point a
+reverse proxy at `/bridge → ws://localhost:9090` and the frontend needs no change.
+
+**Test the whole VR flow without a headset.** On `localhost` the bundled IWER emulator
+injects a virtual Quest 3 (emulated controllers), so opening `https://localhost:5173/` on
+the Mac shows the Enter VR buttons and lets you walk the full flow in the desktop browser.
+This is **localhost-only** and never affects the LAN URL or any production deploy.
 
 ## Tests
 
