@@ -179,3 +179,13 @@ deliberately brought into VR. Everything below the panel layer is single-source.
 - uikit text/graph update throttling discipline (~10 Hz, fixed-width numeric fields,
   imperative updates) to keep VR framerate — mirrors the existing "scan/pose bypass
   React via module feeds polled in useFrame" pattern.
+
+## Dev note: localhost VR emulator
+
+`createXRStore({ hand: true, controller: true })` leaves the IWER Quest-3 emulator
+enabled by default. This emulator auto-activates **only on `localhost`** when no real
+WebXR device is detected, injecting a fake headset so the full VR flow (Enter VR, HUD,
+locomotion, mode switching) can be tested in a desktop browser without a physical
+headset. This is intentionally kept for headset-free dev iteration and is not a desktop
+regression. Accessing the app over a LAN IP or HTTPS on a real Quest is entirely
+unaffected — the emulator stays dormant when a real WebXR implementation is present.

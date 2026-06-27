@@ -62,6 +62,7 @@ export function Locomotion() {
   const rightCtrl = useXRInputSourceState('controller', 'right')
 
   useFrame(() => {
+    if (!inXR) return
     const leftSqueeze =
       leftCtrl?.gamepad['xr-standard-squeeze']?.state === 'pressed'
     const rightSqueeze =

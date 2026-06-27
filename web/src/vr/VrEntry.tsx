@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react'
 import { xrStore } from '../vr/xrStore'
-import { useVrStore } from '../stores/vrModeStore'
 import './vrEntry.css'
 
 /** DOM buttons (visible only on the flat page) to start an immersive session.
  *  WebXR forbids auto-entry — a user tap is required, so these live in the DOM
- *  chrome, not in-scene. Hidden entirely on browsers without WebXR. */
+ *  chrome, not in-scene. Hidden entirely on browsers without WebXR.
+ *  Mode is derived from the XR store subscribe (xrStore.ts) — no optimistic setMode here. */
 export function VrEntry() {
   const [vrOk, setVrOk] = useState(false)
   const [arOk, setArOk] = useState(false)
-  const setMode = useVrStore((s) => s.setMode)
 
   useEffect(() => {
     const xr = navigator.xr
@@ -22,12 +21,12 @@ export function VrEntry() {
   return (
     <div className="vr-entry">
       {vrOk && (
-        <button onClick={() => { setMode('vr'); xrStore.enterVR().catch(() => setMode('none')) }}>
+        <button onClick={() => xrStore.enterVR().catch(() => {})}>
           Enter VR
         </button>
       )}
       {arOk && (
-        <button onClick={() => { setMode('ar'); xrStore.enterAR().catch(() => setMode('none')) }}>
+        <button onClick={() => xrStore.enterAR().catch(() => {})}>
           Enter Passthrough
         </button>
       )}

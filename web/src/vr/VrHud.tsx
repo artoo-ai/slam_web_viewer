@@ -32,22 +32,25 @@ export function VrHud() {
   const status = useConnectionStore((s) => s.status)
   const layers = useLayersStore()
   const toggle = useLayersStore((s) => s.toggle)
-  const setMode = useVrStore((s) => s.setMode)
 
   // setInterval fallback for Points/FPS at ~10 Hz (imperative setText not available in uikit 1.0.74)
+  // Only runs while a session is active; re-subscribes on session enter/exit.
   const [scene, setScene] = useState({ pts: 0, fps: 0 })
   useEffect(() => {
+    if (mode === 'none') return
     const t = setInterval(
       () => setScene({ pts: mapFeed.count + scanFeed.count, fps: fpsMeter.fps }),
       100,
     )
     return () => clearInterval(t)
-  }, [])
+  }, [mode])
 
   const hudRef = useRef<Group>(null)
 
   // Head-lock: copy camera position + orientation then step 1.2 m forward each frame.
+  // Early-exit on desktop so this runs only inside an active VR/AR session.
   useFrame((state) => {
+    if (mode === 'none') return
     if (hudRef.current) {
       const cam = state.camera
       hudRef.current.position.copy(cam.position)
@@ -116,7 +119,7 @@ export function VrHud() {
               paddingBottom={8}
               {...borderProps(6)}
               backgroundColor={mode === 'vr' ? '#2f6df0' : '#27344a'}
-              onClick={() => { setMode('vr'); xrStore.enterVR().catch(() => {}) }}
+              onClick={() => xrStore.enterVR().catch(() => {})}
             >
               <Text fontSize={13} color="#e8eef7">Void</Text>
             </Container>
@@ -127,7 +130,7 @@ export function VrHud() {
               paddingBottom={8}
               {...borderProps(6)}
               backgroundColor={mode === 'ar' ? '#2f6df0' : '#27344a'}
-              onClick={() => { setMode('ar'); xrStore.enterAR().catch(() => {}) }}
+              onClick={() => xrStore.enterAR().catch(() => {})}
             >
               <Text fontSize={13} color="#e8eef7">Passthrough</Text>
             </Container>
