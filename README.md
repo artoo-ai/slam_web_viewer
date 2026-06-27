@@ -208,8 +208,10 @@ the **same-origin** `wss://<host>/bridge`, which the Vite dev server **TLS-termi
 proxies** to the local `ws://localhost:9090` bridge (see `web/vite.config.ts`). Net effect:
 run `./start_bridge.sh mock` + `npm run dev` on the Mac, open the Network URL on the Quest,
 and live data flows into the headset with **no env vars**. (URL precedence is still
-`?ws=` → `VITE_BRIDGE_URL` → derived default.) For a production/Jetson deploy, point a
-reverse proxy at `/bridge → ws://localhost:9090` and the frontend needs no change.
+`?ws=` → `VITE_BRIDGE_URL` → derived default.) To point the headset at a **real robot**
+instead of the local mock, set the proxy target: `BRIDGE_WS=ws://gizmo.local:9090 npm run dev`.
+For a production/Jetson deploy, point a reverse proxy at `/bridge → ws://localhost:9090` and
+the frontend needs no change.
 
 **Test the whole VR flow without a headset.** On `localhost` the bundled IWER emulator
 injects a virtual Quest 3 (emulated controllers), so opening `https://localhost:5173/` on
