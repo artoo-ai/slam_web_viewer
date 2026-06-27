@@ -1,10 +1,13 @@
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
+import { XR } from '@react-three/xr'
 import { SceneContent } from './SceneContent'
+import { SceneRoot } from '../../vr/SceneRoot'
+import { DesktopControls } from '../../vr/DesktopControls'
+import { xrStore } from '../../vr/xrStore'
 
-/** Desktop 3D scene. World is REP-103 z-up — camera.up must be set before
- *  OrbitControls initializes, hence via the camera prop. preserveDrawingBuffer
- *  keeps toBlob() screenshots valid. */
+/** One Canvas for both desktop and VR. Wrapped in <XR>: with no session it
+ *  renders the flat desktop scene (OrbitControls + DOM chrome). On enterVR()/
+ *  enterAR() the headset takes over and SceneRoot reorients to Y-up. */
 export function ViewportCanvas() {
   return (
     <Canvas
@@ -12,8 +15,12 @@ export function ViewportCanvas() {
       gl={{ antialias: true, preserveDrawingBuffer: true }}
       style={{ background: 'var(--bg)' }}
     >
-      <OrbitControls makeDefault target={[0, 0, 0.5]} />
-      <SceneContent />
+      <XR store={xrStore}>
+        <DesktopControls />
+        <SceneRoot>
+          <SceneContent />
+        </SceneRoot>
+      </XR>
     </Canvas>
   )
 }
