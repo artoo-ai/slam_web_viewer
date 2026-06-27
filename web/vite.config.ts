@@ -1,22 +1,60 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+import { createProxyServer } from 'http-proxy-3'
+import type { Duplex } from 'node:stream'
+
+// The local bridge the /bridge path forwards to; override to point dev at a
+// remote robot, e.g. BRIDGE_WS=ws://gizmo.local:9090 npm run dev
+const BRIDGE_TARGET = process.env.BRIDGE_WS ?? 'ws://localhost:9090'
+
+/** Proxies the same-origin `wss://<host>/bridge` path to the local `ws` bridge so
+ *  an HTTPS page (the Quest headset) can reach it without a mixed-content block.
+ *
+ *  We own this instead of using Vite's `server.proxy` because Vite's built-in
+ *  proxy logs a full stack trace on every upstream failure: when the bridge is
+ *  stopped, the browser's auto-reconnect would spam the terminal with
+ *  `ECONNREFUSED` traces, and the half-open sockets stall Ctrl-C. Here a refused
+ *  upstream just quietly closes the client socket, and live sockets are destroyed
+ *  on shutdown so the dev server exits promptly. */
+function bridgeWsProxy(): PluginOption {
+  return {
+    name: 'bridge-ws-proxy',
+    configureServer(server) {
+      const proxy = createProxyServer({ target: BRIDGE_TARGET, ws: true })
+      const sockets = new Set<Duplex>()
+
+      // Bridge down → quietly drop the client socket (no stack-trace spam). For a
+      // ws upgrade, the third arg http-proxy emits is the client socket.
+      proxy.on('error', (_err, _req, socket) => {
+        try {
+          ;(socket as Duplex | undefined)?.destroy()
+        } catch {
+          /* socket already gone */
+        }
+      })
+
+      server.httpServer?.on('upgrade', (req, socket, head) => {
+        if (!req.url?.startsWith('/bridge')) return // leave HMR + other upgrades to Vite
+        req.url = req.url.replace(/^\/bridge/, '') || '/'
+        sockets.add(socket)
+        socket.on('close', () => sockets.delete(socket))
+        proxy.ws(req, socket, head)
+      })
+
+      // Tear down any live proxied sockets on shutdown so Ctrl-C exits promptly.
+      server.httpServer?.on('close', () => {
+        for (const s of sockets) s.destroy()
+        proxy.close()
+      })
+    },
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), basicSsl()],
+  plugins: [react(), basicSsl(), bridgeWsProxy()],
   server: {
     host: true, // expose on the LAN so the Quest browser can reach it
-    proxy: {
-      // TLS-terminating bridge proxy: an HTTPS page (Quest headset) can't open a
-      // plain ws:// to the mock (mixed content), so it connects to same-origin
-      // wss://<host>/bridge and Vite forwards it to the local ws bridge.
-      '/bridge': {
-        target: 'ws://localhost:9090',
-        ws: true,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/bridge/, ''),
-      },
-    },
   },
 })
