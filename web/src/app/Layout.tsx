@@ -7,6 +7,7 @@ import { BboxReadout, CameraInset, IntensityLegend } from '../components/chrome/
 import { StalenessStrip } from '../components/chrome/StalenessStrip'
 import { AlertBanners } from '../components/chrome/AlertBanners'
 import { TeleopPanel } from '../components/panels/TeleopPanel'
+import { VrEntry } from '../vr/VrEntry'
 import './layout.css'
 
 /** SJY HandHeldSLAM-style chrome: header bar, left sidebar, viewport filling
@@ -26,6 +27,7 @@ export function Layout() {
         <CameraInset />
         <BboxReadout />
         <TeleopPanel />
+        <VrEntry />
       </main>
     </div>
   )

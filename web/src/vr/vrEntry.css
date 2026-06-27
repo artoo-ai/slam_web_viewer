@@ -1,0 +1,18 @@
+.vr-entry {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 20;
+}
+.vr-entry button {
+  padding: 8px 14px;
+  font: inherit;
+  color: #e8eef7;
+  background: #1c2839;
+  border: 1px solid #3b4a61;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.vr-entry button:hover { background: #243349; }
