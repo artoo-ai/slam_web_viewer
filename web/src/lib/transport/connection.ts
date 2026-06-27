@@ -7,6 +7,7 @@
  *  scanFeed/poseFeed; low-rate channels update Zustand stores. */
 
 import { CH, encodeCommand, type Command, type CommandInput } from './protocol'
+import { pickBridgeUrl } from './bridgeUrl'
 import { useConnectionStore } from '../../stores/connectionStore'
 import { useTelemetryStore } from '../../stores/telemetryStore'
 import { scanFeed } from '../../stores/scanFeed'
@@ -59,11 +60,12 @@ const BACKOFF_MAX_MS = 5000
 const PING_INTERVAL_MS = 2000
 
 function resolveUrl(): string {
-  const fromQuery = new URLSearchParams(window.location.search).get('ws')
-  if (fromQuery) return fromQuery
-  const fromEnv = import.meta.env.VITE_BRIDGE_URL as string | undefined
-  if (fromEnv) return fromEnv
-  return 'ws://localhost:9090'
+  return pickBridgeUrl({
+    queryWs: new URLSearchParams(window.location.search).get('ws'),
+    envUrl: import.meta.env.VITE_BRIDGE_URL as string | undefined,
+    protocol: window.location.protocol,
+    host: window.location.host,
+  })
 }
 
 class Connection {
