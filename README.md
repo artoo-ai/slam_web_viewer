@@ -192,9 +192,15 @@ both a `Local: https://localhost:5173/` and `Network: https://<lan-ip>:5173/` li
    the scene.
 4. Exit with the Meta/Oculus button.
 
-**Locomotion:** physically walk within your room-scale boundary; point a controller at the
-floor and pull the trigger to **teleport**; **squeeze both grips and move your hands apart/
-together** to scale the whole map (tabletop ↔ walk-inside).
+**Locomotion:** physically walk within your room-scale boundary; **left thumbstick** to
+slide across the map and **right thumbstick** to turn; point a controller at the floor and
+pull the trigger to **teleport**; **squeeze both grips and move your hands apart/together**
+to scale the whole map (tabletop ↔ walk-inside).
+
+**Void ↔ Passthrough:** the HUD has a switch that flips instantly between an opaque void and
+Quest passthrough (your real room). It's one `immersive-ar` session under the hood with a
+toggleable opaque backdrop — WebXR can't hot-swap session types, so a runtime backdrop is
+how the toggle stays instant.
 
 **Live data over `wss://` (the `/bridge` proxy).** An HTTPS page cannot open a plain
 `ws://` socket to a remote host (mixed content). So on an HTTPS page the viewer connects to
