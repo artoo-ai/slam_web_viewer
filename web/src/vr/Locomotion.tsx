@@ -9,6 +9,9 @@ import {
   useXRControllerLocomotion,
 } from '@react-three/xr'
 import { useVrStore, clampWorldScale } from '../stores/vrModeStore'
+import { useTeleopStore } from '../stores/teleopStore'
+
+const DRIVE_DEADZONE = 0.12 // ignore small thumbstick noise when driving the robot
 
 // Module-level scratch vectors: avoid allocating in useFrame to reduce GC churn.
 const _posA = new Vector3()
@@ -67,15 +70,38 @@ export function Locomotion() {
   const leftCtrl = useXRInputSourceState('controller', 'left')
   const rightCtrl = useXRInputSourceState('controller', 'right')
 
+  // What the left thumbstick does: 'move' flies you through the world, 'drive'
+  // teleoperates the robot. While driving we disable world-locomotion so the
+  // stick doesn't also move you.
+  const joystickMode = useVrStore((s) => s.joystickMode)
+  const armed = useTeleopStore((s) => s.armed)
+  const driving = joystickMode === 'drive'
+
   // Thumbstick locomotion: left stick slides across the map (relative to head yaw),
   // right stick smoothly rotates the view. Moves the XROrigin; no-op on desktop
-  // (no controllers). Complements physical walking, teleport, and grab-to-scale.
+  // (no controllers). Disabled while driving the robot. Options are read live each
+  // frame by the hook, so passing false here turns it off when joystickMode flips.
   useXRControllerLocomotion(
     origin,
-    { speed: 2 },
-    { type: 'smooth', speed: 1.5 },
+    driving ? false : { speed: 2 },
+    driving ? false : { type: 'smooth', speed: 1.5 },
     'left',
   )
+
+  // Robot teleop: while in 'drive' mode AND armed, stream the left thumbstick as a
+  // body twist into teleopStore — the always-mounted TeleopPanel sends it as
+  // cmd_vel (and halts the robot via the bridge deadman on disarm/release).
+  useFrame(() => {
+    if (!inXR || !driving || !armed) return
+    const stick = leftCtrl?.gamepad['xr-standard-thumbstick']
+    let nx = stick?.xAxis ?? 0
+    let ny = stick?.yAxis ?? 0 // thumbstick y is +down
+    if (Math.hypot(nx, ny) < DRIVE_DEADZONE) {
+      nx = 0
+      ny = 0
+    }
+    useTeleopStore.getState().setVector(nx, -ny) // up on the stick = forward
+  })
 
   useFrame(() => {
     if (!inXR) return
