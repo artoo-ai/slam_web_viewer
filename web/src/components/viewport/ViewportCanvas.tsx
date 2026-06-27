@@ -3,6 +3,7 @@ import { XR } from '@react-three/xr'
 import { SceneContent } from './SceneContent'
 import { SceneRoot } from '../../vr/SceneRoot'
 import { DesktopControls } from '../../vr/DesktopControls'
+import { Locomotion } from '../../vr/Locomotion'
 import { xrStore } from '../../vr/xrStore'
 
 /** One Canvas for both desktop and VR. Wrapped in <XR>: with no session it
@@ -17,6 +18,7 @@ export function ViewportCanvas() {
     >
       <XR store={xrStore}>
         <DesktopControls />
+        <Locomotion />
         <SceneRoot>
           <SceneContent />
         </SceneRoot>
