@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Root, Container, Text } from '@react-three/uikit'
 import { Euler, Quaternion, Vector3, type Group } from 'three'
@@ -10,12 +10,39 @@ import { mapFeed } from '../stores/mapFeed'
 import { scanFeed } from '../stores/scanFeed'
 import { fpsMeter } from '../lib/viewportRefs'
 
-/** Floating VR HUD (session-only). Parented to a group we lock ~1.2m in front of
- *  the camera each frame so it follows the operator. Points/FPS are updated via
- *  setInterval at ~10 Hz (not per-frame) to keep VR framerate stable. */
-const HUD_LAYERS: (keyof LayerVisibility)[] = [
-  'scan', 'map_points', 'trajectory', 'map', 'costmap_global', 'costmap_local', 'path',
+/** Floating VR HUD (session-only). Parented to a group we lazy yaw-follow ~1.2m
+ *  in front of the operator. Styled as a compact instrument panel — see the
+ *  palette + Chip/Section helpers below. */
+
+const LAYERS: { key: keyof LayerVisibility; label: string }[] = [
+  { key: 'scan', label: 'Scan' },
+  { key: 'map_points', label: 'Map' },
+  { key: 'trajectory', label: 'Trail' },
+  { key: 'map', label: 'Grid' },
+  { key: 'costmap_global', label: 'Cost G' },
+  { key: 'costmap_local', label: 'Cost L' },
+  { key: 'path', label: 'Path' },
 ]
+
+// Instrument-panel palette (cohesive with the SJY desktop chrome).
+const C = {
+  panel: '#0d1522',
+  panelBorder: '#27374f',
+  divider: '#1c2942',
+  text: '#eaf1fb',
+  textDim: '#9aadc6',
+  label: '#5f7491',
+  accent: '#3b82f6',
+  accentHover: '#5b9bff',
+  chip: '#162232',
+  chipBorder: '#2a3a52',
+  chipHover: '#1d2c40',
+  chipBorderHover: '#3a4d6b',
+  live: '#3ddc97',
+  down: '#e7794b',
+  alert: '#e23b3b',
+  alertHover: '#f24c4c',
+}
 
 // Lazy yaw-follow placement: panel stays UPRIGHT (yaw only — no pitch/roll tilt),
 // sits a comfortable distance ahead and slightly below eye line, and trails head
@@ -28,15 +55,71 @@ const _targetPos = new Vector3()
 const _targetQuat = new Quaternion()
 const _yAxis = new Vector3(0, 1, 0)
 
-// Radius applied to all four corners of a container.
-function borderProps(r: number) {
-  return {
+// uikit 1.0.74 has no padding/borderRadius shorthands — expand them via helpers.
+const pad = (x: number, y: number) =>
+  ({ paddingLeft: x, paddingRight: x, paddingTop: y, paddingBottom: y }) as const
+const radius = (r: number) =>
+  ({
     borderTopLeftRadius: r,
     borderTopRightRadius: r,
     borderBottomLeftRadius: r,
     borderBottomRightRadius: r,
-  } as const
+  }) as const
+
+/** A pill toggle/button with border + hover/active states. `tone` 'alert' is the
+ *  red Arm control; `grow` makes paired chips share the row width evenly. */
+function Chip({
+  label,
+  active,
+  onClick,
+  tone = 'accent',
+  grow = false,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+  tone?: 'accent' | 'alert'
+  grow?: boolean
+}) {
+  const on = tone === 'alert' ? C.alert : C.accent
+  const onHover = tone === 'alert' ? C.alertHover : C.accentHover
+  return (
+    <Container
+      flexGrow={grow ? 1 : 0}
+      justifyContent="center"
+      {...pad(13, 8)}
+      {...radius(8)}
+      borderWidth={1}
+      borderColor={active ? on : C.chipBorder}
+      backgroundColor={active ? on : C.chip}
+      cursor="pointer"
+      hover={{ backgroundColor: active ? onHover : C.chipHover, borderColor: active ? onHover : C.chipBorderHover }}
+      onClick={onClick}
+    >
+      <Text fontSize={12.5} letterSpacing={0.3} color={active ? '#ffffff' : C.textDim}>
+        {label}
+      </Text>
+    </Container>
+  )
 }
+
+/** A labelled group: uppercase tracked label over its controls. */
+function Section({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Container flexDirection="column" gapRow={8}>
+      <Text fontSize={10} letterSpacing={2} color={C.label}>
+        {label}
+      </Text>
+      {children}
+    </Container>
+  )
+}
+
+const Row = ({ children }: { children: ReactNode }) => (
+  <Container flexDirection="row" gapColumn={8}>
+    {children}
+  </Container>
+)
 
 export function VrHud() {
   const mode = useVrStore((s) => s.mode)
@@ -59,15 +142,12 @@ export function VrHud() {
     setJoystickMode('move')
   }
 
-  // setInterval fallback for Points/FPS at ~10 Hz (imperative setText not available in uikit 1.0.74)
-  // Only runs while a session is active; re-subscribes on session enter/exit.
+  // setInterval fallback for Points/FPS at ~10 Hz (imperative setText not available
+  // in uikit 1.0.74). Only runs while a session is active.
   const [scene, setScene] = useState({ pts: 0, fps: 0 })
   useEffect(() => {
     if (mode === 'none') return
-    const t = setInterval(
-      () => setScene({ pts: mapFeed.count + scanFeed.count, fps: fpsMeter.fps }),
-      100,
-    )
+    const t = setInterval(() => setScene({ pts: mapFeed.count + scanFeed.count, fps: fpsMeter.fps }), 100)
     return () => clearInterval(t)
   }, [mode])
 
@@ -77,7 +157,6 @@ export function VrHud() {
   // Lazy yaw-follow: target a point ahead of the head along the head's YAW only
   // (ignoring pitch/roll, so the panel never tilts), then ease position + yaw
   // toward it. The easing is what lets you aim at a button without it dodging.
-  // Snaps into place on the first frame of a session; eased thereafter.
   useFrame((state, delta) => {
     if (mode === 'none') {
       placed.current = false
@@ -88,12 +167,10 @@ export function VrHud() {
     const cam = state.camera
     _camEuler.setFromQuaternion(cam.quaternion, 'YXZ')
     const yaw = _camEuler.y
-    const forwardX = -Math.sin(yaw)
-    const forwardZ = -Math.cos(yaw)
     _targetPos.set(
-      cam.position.x + forwardX * HUD_DISTANCE,
+      cam.position.x - Math.sin(yaw) * HUD_DISTANCE,
       cam.position.y - HUD_DROP,
-      cam.position.z + forwardZ * HUD_DISTANCE,
+      cam.position.z - Math.cos(yaw) * HUD_DISTANCE,
     )
     _targetQuat.setFromAxisAngle(_yAxis, yaw)
     if (!placed.current) {
@@ -109,159 +186,85 @@ export function VrHud() {
 
   if (mode === 'none') return null
 
+  const connected = status === 'open'
+
   return (
     <group ref={hudRef}>
-      {/* pixelSize, anchorX, anchorY confirmed in @react-three/uikit 1.0.74 */}
       <Root pixelSize={0.0016} anchorX="center" anchorY="center">
-        {/*
-          API deviations from brief applied:
-          - `gap` → `gapColumn` / `gapRow` (no gap shorthand)
-          - `padding` → individual sides (paddingTop/Left/Right/Bottom)
-          - `borderRadius` → four individual corner props via borderProps()
-          - `backgroundOpacity` → dropped (no such prop; use `opacity` on the group if needed)
-          - `paddingX`/`paddingY` → paddingLeft+paddingRight / paddingTop+paddingBottom
-        */}
         <Container
           flexDirection="column"
-          gapRow={8}
-          paddingTop={14}
-          paddingLeft={14}
-          paddingRight={14}
-          paddingBottom={14}
-          {...borderProps(10)}
-          backgroundColor="#141d2b"
-          width={420}
+          gapRow={15}
+          {...pad(17, 16)}
+          {...radius(14)}
+          borderWidth={1.5}
+          borderColor={C.panelBorder}
+          backgroundColor={C.panel}
+          width={460}
         >
-          <Text fontSize={20} color="#e8eef7">Robot GUI · VR</Text>
-          <Text fontSize={14} color={status === 'open' ? '#5fd08a' : '#d0825f'}>
-            {status === 'open' ? 'Connected' : status}
-          </Text>
-          <Text fontSize={14} color="#9fb2cc">
-            {`Points ${scene.pts.toLocaleString()}  ·  ${scene.fps} FPS`}
-          </Text>
-
-          <Text fontSize={13} color="#7f93ad">Layers</Text>
-          {/* flexWrap value "wrap" confirmed valid in uikit 1.0.74 */}
-          <Container flexDirection="row" flexWrap="wrap" gapRow={6} gapColumn={6}>
-            {HUD_LAYERS.map((key) => (
-              <Container
-                key={key}
-                paddingLeft={10}
-                paddingRight={10}
-                paddingTop={6}
-                paddingBottom={6}
-                {...borderProps(6)}
-                backgroundColor={layers[key] ? '#2f6df0' : '#27344a'}
-                onClick={() => toggle(key)}
-              >
-                <Text fontSize={12} color="#e8eef7">{key}</Text>
-              </Container>
-            ))}
+          {/* Header: accent dot · wordmark · live status */}
+          <Container flexDirection="row" alignItems="center" gapColumn={9}>
+            <Container width={8} height={8} {...radius(4)} backgroundColor={C.accent} />
+            <Text fontSize={15} letterSpacing={3} color={C.text}>ROBOT GUI</Text>
+            <Container flexGrow={1} />
+            <Container width={7} height={7} {...radius(4)} backgroundColor={connected ? C.live : C.down} />
+            <Text fontSize={11} letterSpacing={1} color={connected ? C.live : C.down}>
+              {connected ? 'LIVE' : status.toUpperCase()}
+            </Text>
           </Container>
 
-          {/* Instant void ↔ passthrough toggle: flips the VoidBackdrop, no session
-              re-entry (WebXR can't hot-swap session types). */}
-          <Container flexDirection="row" gapColumn={8}>
-            <Container
-              paddingLeft={12}
-              paddingRight={12}
-              paddingTop={8}
-              paddingBottom={8}
-              {...borderProps(6)}
-              backgroundColor={environment === 'void' ? '#2f6df0' : '#27344a'}
-              onClick={() => setEnvironment('void')}
-            >
-              <Text fontSize={13} color="#e8eef7">Void</Text>
-            </Container>
-            <Container
-              paddingLeft={12}
-              paddingRight={12}
-              paddingTop={8}
-              paddingBottom={8}
-              {...borderProps(6)}
-              backgroundColor={environment === 'passthrough' ? '#2f6df0' : '#27344a'}
-              onClick={() => setEnvironment('passthrough')}
-            >
-              <Text fontSize={13} color="#e8eef7">Passthrough</Text>
-            </Container>
+          <Container height={1} backgroundColor={C.divider} />
+
+          {/* Metrics: points · fps */}
+          <Container flexDirection="row" alignItems="center" gapColumn={7}>
+            <Text fontSize={10} letterSpacing={1.5} color={C.label}>POINTS</Text>
+            <Text fontSize={15} color={C.text}>{scene.pts.toLocaleString()}</Text>
+            <Container width={3} height={3} {...radius(2)} backgroundColor={C.label} />
+            <Text fontSize={15} color={C.text}>{scene.fps}</Text>
+            <Text fontSize={10} letterSpacing={1.5} color={C.label}>FPS</Text>
           </Container>
 
-          {/* Viewpoint: Free moves you anywhere; Robot POV locks your view to the
-              robot's live pose so you ride along and see what it sees. */}
-          <Text fontSize={13} color="#7f93ad">View</Text>
-          <Container flexDirection="row" gapColumn={8}>
-            <Container
-              paddingLeft={12}
-              paddingRight={12}
-              paddingTop={8}
-              paddingBottom={8}
-              {...borderProps(6)}
-              backgroundColor={viewMode === 'free' ? '#2f6df0' : '#27344a'}
-              onClick={() => setViewMode('free')}
-            >
-              <Text fontSize={13} color="#e8eef7">Free</Text>
-            </Container>
-            <Container
-              paddingLeft={12}
-              paddingRight={12}
-              paddingTop={8}
-              paddingBottom={8}
-              {...borderProps(6)}
-              backgroundColor={viewMode === 'robot' ? '#2f6df0' : '#27344a'}
-              onClick={() => setViewMode('robot')}
-            >
-              <Text fontSize={13} color="#e8eef7">Robot POV</Text>
-            </Container>
-          </Container>
+          <Section label="ENVIRONMENT">
+            <Row>
+              <Chip label="Void" active={environment === 'void'} onClick={() => setEnvironment('void')} grow />
+              <Chip
+                label="Passthrough"
+                active={environment === 'passthrough'}
+                onClick={() => setEnvironment('passthrough')}
+                grow
+              />
+            </Row>
+          </Section>
 
-          {/* Joystick mode: Move flies you through the world; Drive teleoperates the
-              robot (left stick = cmd_vel), shown only when the bridge advertises
-              teleop. Drive requires an explicit Arm; the robot halts on disarm. */}
+          <Section label="VIEW">
+            <Row>
+              <Chip label="Free" active={viewMode === 'free'} onClick={() => setViewMode('free')} grow />
+              <Chip label="Robot POV" active={viewMode === 'robot'} onClick={() => setViewMode('robot')} grow />
+            </Row>
+          </Section>
+
+          <Section label="LAYERS">
+            <Container flexDirection="row" flexWrap="wrap" gapRow={8} gapColumn={8}>
+              {LAYERS.map(({ key, label }) => (
+                <Chip key={key} label={label} active={layers[key]} onClick={() => toggle(key)} />
+              ))}
+            </Container>
+          </Section>
+
           {hasTeleop && (
-            <>
-              <Text fontSize={13} color="#7f93ad">Joystick</Text>
-              <Container flexDirection="row" gapColumn={8}>
-                <Container
-                  paddingLeft={12}
-                  paddingRight={12}
-                  paddingTop={8}
-                  paddingBottom={8}
-                  {...borderProps(6)}
-                  backgroundColor={joystickMode === 'move' ? '#2f6df0' : '#27344a'}
-                  onClick={selectMove}
-                >
-                  <Text fontSize={13} color="#e8eef7">Move me</Text>
-                </Container>
-                <Container
-                  paddingLeft={12}
-                  paddingRight={12}
-                  paddingTop={8}
-                  paddingBottom={8}
-                  {...borderProps(6)}
-                  backgroundColor={joystickMode === 'drive' ? '#2f6df0' : '#27344a'}
-                  onClick={() => setJoystickMode('drive')}
-                >
-                  <Text fontSize={13} color="#e8eef7">Drive robot</Text>
-                </Container>
+            <Section label="JOYSTICK">
+              <Row>
+                <Chip label="Move me" active={joystickMode === 'move'} onClick={selectMove} grow />
+                <Chip label="Drive robot" active={joystickMode === 'drive'} onClick={() => setJoystickMode('drive')} grow />
                 {joystickMode === 'drive' && (
-                  <Container
-                    paddingLeft={12}
-                    paddingRight={12}
-                    paddingTop={8}
-                    paddingBottom={8}
-                    {...borderProps(6)}
-                    backgroundColor={armed ? '#c0392b' : '#27344a'}
-                    onClick={() =>
-                      armed
-                        ? useTeleopStore.getState().disarm()
-                        : useTeleopStore.getState().arm()
-                    }
-                  >
-                    <Text fontSize={13} color="#e8eef7">{armed ? 'ARMED — Stop' : 'Arm'}</Text>
-                  </Container>
+                  <Chip
+                    label={armed ? 'STOP' : 'ARM'}
+                    active={armed}
+                    tone="alert"
+                    onClick={() => (armed ? useTeleopStore.getState().disarm() : useTeleopStore.getState().arm())}
+                  />
                 )}
-              </Container>
-            </>
+              </Row>
+            </Section>
           )}
         </Container>
       </Root>
