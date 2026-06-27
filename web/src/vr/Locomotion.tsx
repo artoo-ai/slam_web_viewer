@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Vector3, type Group } from 'three'
+import { Euler, Quaternion, Vector3, type Group } from 'three'
 import {
   XROrigin,
   TeleportTarget,
@@ -10,12 +10,20 @@ import {
 } from '@react-three/xr'
 import { useVrStore, clampWorldScale } from '../stores/vrModeStore'
 import { useTeleopStore } from '../stores/teleopStore'
+import { poseFeed } from '../stores/poseFeed'
+import { Z_UP_TO_Y_UP } from './coords'
 
 const DRIVE_DEADZONE = 0.12 // ignore small thumbstick noise when driving the robot
 
 // Module-level scratch vectors: avoid allocating in useFrame to reduce GC churn.
 const _posA = new Vector3()
 const _posB = new Vector3()
+// Robot-POV scratch: map (z-up) → rendered world (the same transform SceneRoot
+// applies — scale by worldScale, then rotate Z-up→Y-up).
+const _zUpEuler = new Euler(...Z_UP_TO_Y_UP)
+const _povPos = new Vector3()
+const _povQuat = new Quaternion()
+const _povFwd = new Vector3()
 
 /**
  * Locomotion rig (mounted inside <XR>, active in both VR and AR sessions):
@@ -74,19 +82,42 @@ export function Locomotion() {
   // teleoperates the robot. While driving we disable world-locomotion so the
   // stick doesn't also move you.
   const joystickMode = useVrStore((s) => s.joystickMode)
+  const viewMode = useVrStore((s) => s.viewMode)
   const armed = useTeleopStore((s) => s.armed)
   const driving = joystickMode === 'drive'
+  // The XROrigin is owned by the POV rig (or fought by free-move) when either
+  // driving the robot or riding it — disable world-locomotion in both cases.
+  const lockOrigin = driving || viewMode === 'robot'
 
   // Thumbstick locomotion: left stick slides across the map (relative to head yaw),
   // right stick smoothly rotates the view. Moves the XROrigin; no-op on desktop
-  // (no controllers). Disabled while driving the robot. Options are read live each
-  // frame by the hook, so passing false here turns it off when joystickMode flips.
+  // (no controllers). Disabled while driving/riding the robot. Options are read
+  // live each frame by the hook, so passing false here turns it off on mode flip.
   useXRControllerLocomotion(
     origin,
-    driving ? false : { speed: 2 },
-    driving ? false : { type: 'smooth', speed: 1.5 },
+    lockOrigin ? false : { speed: 2 },
+    lockOrigin ? false : { type: 'smooth', speed: 1.5 },
     'left',
   )
+
+  // Robot POV: lock the XROrigin to the robot's live pose so you ride along.
+  // poseFeed is in the SLAM map frame (z-up); rendered geometry is SceneRoot's
+  // transform of it, so we apply the same scale+rotation to land the origin where
+  // the robot is drawn. Priority 1 runs after any other origin writers this frame.
+  useFrame(() => {
+    if (!inXR || viewMode !== 'robot') return
+    const pose = poseFeed.latest
+    const o = origin.current
+    if (!pose || !o) return
+    const s = useVrStore.getState().worldScale
+    _povPos.set(pose.p[0], pose.p[1], pose.p[2]).multiplyScalar(s).applyEuler(_zUpEuler)
+    o.position.copy(_povPos)
+    // Robot forward is +X in the map frame (see RobotPoseGlyph); map it to a world
+    // yaw so "ahead" in the headset matches where the robot is heading.
+    _povQuat.set(pose.q[0], pose.q[1], pose.q[2], pose.q[3])
+    _povFwd.set(1, 0, 0).applyQuaternion(_povQuat).applyEuler(_zUpEuler)
+    o.rotation.set(0, Math.atan2(-_povFwd.x, -_povFwd.z), 0)
+  }, 1)
 
   // Robot teleop: while in 'drive' mode AND armed, stream the left thumbstick as a
   // body twist into teleopStore — the always-mounted TeleopPanel sends it as

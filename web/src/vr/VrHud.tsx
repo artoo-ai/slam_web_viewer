@@ -44,6 +44,8 @@ export function VrHud() {
   const setEnvironment = useVrStore((s) => s.setEnvironment)
   const joystickMode = useVrStore((s) => s.joystickMode)
   const setJoystickMode = useVrStore((s) => s.setJoystickMode)
+  const viewMode = useVrStore((s) => s.viewMode)
+  const setViewMode = useVrStore((s) => s.setViewMode)
   const status = useConnectionStore((s) => s.status)
   const hasTeleop = useConnectionStore((s) => s.hello?.channels.includes('teleop') ?? false)
   const armed = useTeleopStore((s) => s.armed)
@@ -181,6 +183,34 @@ export function VrHud() {
               onClick={() => setEnvironment('passthrough')}
             >
               <Text fontSize={13} color="#e8eef7">Passthrough</Text>
+            </Container>
+          </Container>
+
+          {/* Viewpoint: Free moves you anywhere; Robot POV locks your view to the
+              robot's live pose so you ride along and see what it sees. */}
+          <Text fontSize={13} color="#7f93ad">View</Text>
+          <Container flexDirection="row" gapColumn={8}>
+            <Container
+              paddingLeft={12}
+              paddingRight={12}
+              paddingTop={8}
+              paddingBottom={8}
+              {...borderProps(6)}
+              backgroundColor={viewMode === 'free' ? '#2f6df0' : '#27344a'}
+              onClick={() => setViewMode('free')}
+            >
+              <Text fontSize={13} color="#e8eef7">Free</Text>
+            </Container>
+            <Container
+              paddingLeft={12}
+              paddingRight={12}
+              paddingTop={8}
+              paddingBottom={8}
+              {...borderProps(6)}
+              backgroundColor={viewMode === 'robot' ? '#2f6df0' : '#27344a'}
+              onClick={() => setViewMode('robot')}
+            >
+              <Text fontSize={13} color="#e8eef7">Robot POV</Text>
             </Container>
           </Container>
 

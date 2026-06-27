@@ -11,6 +11,11 @@ export type VrEnvironment = 'void' | 'passthrough'
  *  'drive' streams cmd_vel to teleoperate the robot (gated on an Arm press). */
 export type VrJoystickMode = 'move' | 'drive'
 
+/** Viewpoint: 'free' lets you move yourself anywhere; 'robot' locks your
+ *  viewpoint to the robot's live pose so you ride along and see the map from
+ *  where the robot is. */
+export type VrViewMode = 'free' | 'robot'
+
 export const MIN_WORLD_SCALE = 0.02
 export const MAX_WORLD_SCALE = 5
 
@@ -23,10 +28,12 @@ interface VrState {
   mode: VrSessionMode
   environment: VrEnvironment
   joystickMode: VrJoystickMode
+  viewMode: VrViewMode
   worldScale: number
   setMode: (mode: VrSessionMode) => void
   setEnvironment: (environment: VrEnvironment) => void
   setJoystickMode: (joystickMode: VrJoystickMode) => void
+  setViewMode: (viewMode: VrViewMode) => void
   setWorldScale: (scale: number) => void
 }
 
@@ -34,9 +41,11 @@ export const useVrStore = create<VrState>((set) => ({
   mode: 'none',
   environment: 'void',
   joystickMode: 'move',
+  viewMode: 'free',
   worldScale: 1,
   setMode: (mode) => set({ mode }),
   setEnvironment: (environment) => set({ environment }),
   setJoystickMode: (joystickMode) => set({ joystickMode }),
+  setViewMode: (viewMode) => set({ viewMode }),
   setWorldScale: (scale) => set({ worldScale: clampWorldScale(scale) }),
 }))
