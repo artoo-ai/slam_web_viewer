@@ -1,7 +1,13 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Vector3, type Group } from 'three'
-import { XROrigin, TeleportTarget, useXRInputSourceState, useXR } from '@react-three/xr'
+import {
+  XROrigin,
+  TeleportTarget,
+  useXRInputSourceState,
+  useXR,
+  useXRControllerLocomotion,
+} from '@react-three/xr'
 import { useVrStore, clampWorldScale } from '../stores/vrModeStore'
 
 // Module-level scratch vectors: avoid allocating in useFrame to reduce GC churn.
@@ -60,6 +66,16 @@ export function Locomotion() {
   // XRControllerState | undefined — typed by v6; undefined when controller not present.
   const leftCtrl = useXRInputSourceState('controller', 'left')
   const rightCtrl = useXRInputSourceState('controller', 'right')
+
+  // Thumbstick locomotion: left stick slides across the map (relative to head yaw),
+  // right stick smoothly rotates the view. Moves the XROrigin; no-op on desktop
+  // (no controllers). Complements physical walking, teleport, and grab-to-scale.
+  useXRControllerLocomotion(
+    origin,
+    { speed: 2 },
+    { type: 'smooth', speed: 1.5 },
+    'left',
+  )
 
   useFrame(() => {
     if (!inXR) return
