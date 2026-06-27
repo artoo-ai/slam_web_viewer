@@ -5,7 +5,6 @@ import type { Group } from 'three'
 import { useConnectionStore } from '../stores/connectionStore'
 import { useLayersStore, type LayerVisibility } from '../stores/layersStore'
 import { useVrStore } from '../stores/vrModeStore'
-import { xrStore } from './xrStore'
 import { mapFeed } from '../stores/mapFeed'
 import { scanFeed } from '../stores/scanFeed'
 import { fpsMeter } from '../lib/viewportRefs'
@@ -29,6 +28,8 @@ function borderProps(r: number) {
 
 export function VrHud() {
   const mode = useVrStore((s) => s.mode)
+  const environment = useVrStore((s) => s.environment)
+  const setEnvironment = useVrStore((s) => s.setEnvironment)
   const status = useConnectionStore((s) => s.status)
   const layers = useLayersStore()
   const toggle = useLayersStore((s) => s.toggle)
@@ -111,6 +112,8 @@ export function VrHud() {
             ))}
           </Container>
 
+          {/* Instant void ↔ passthrough toggle: flips the VoidBackdrop, no session
+              re-entry (WebXR can't hot-swap session types). */}
           <Container flexDirection="row" gapColumn={8}>
             <Container
               paddingLeft={12}
@@ -118,8 +121,8 @@ export function VrHud() {
               paddingTop={8}
               paddingBottom={8}
               {...borderProps(6)}
-              backgroundColor={mode === 'vr' ? '#2f6df0' : '#27344a'}
-              onClick={() => xrStore.enterVR().catch(() => {})}
+              backgroundColor={environment === 'void' ? '#2f6df0' : '#27344a'}
+              onClick={() => setEnvironment('void')}
             >
               <Text fontSize={13} color="#e8eef7">Void</Text>
             </Container>
@@ -129,8 +132,8 @@ export function VrHud() {
               paddingTop={8}
               paddingBottom={8}
               {...borderProps(6)}
-              backgroundColor={mode === 'ar' ? '#2f6df0' : '#27344a'}
-              onClick={() => xrStore.enterAR().catch(() => {})}
+              backgroundColor={environment === 'passthrough' ? '#2f6df0' : '#27344a'}
+              onClick={() => setEnvironment('passthrough')}
             >
               <Text fontSize={13} color="#e8eef7">Passthrough</Text>
             </Container>

@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { useVrStore, clampWorldScale, MIN_WORLD_SCALE, MAX_WORLD_SCALE } from './vrModeStore'
 
 describe('vrModeStore', () => {
-  beforeEach(() => useVrStore.setState({ mode: 'none', worldScale: 1 }))
+  beforeEach(() => useVrStore.setState({ mode: 'none', environment: 'void', worldScale: 1 }))
 
   it('clamps world scale to the allowed range', () => {
     expect(clampWorldScale(1)).toBe(1)
@@ -18,5 +18,16 @@ describe('vrModeStore', () => {
   it('setWorldScale clamps before storing', () => {
     useVrStore.getState().setWorldScale(999)
     expect(useVrStore.getState().worldScale).toBe(MAX_WORLD_SCALE)
+  })
+
+  it('defaults the environment to void', () => {
+    expect(useVrStore.getState().environment).toBe('void')
+  })
+
+  it('setEnvironment toggles void ↔ passthrough', () => {
+    useVrStore.getState().setEnvironment('passthrough')
+    expect(useVrStore.getState().environment).toBe('passthrough')
+    useVrStore.getState().setEnvironment('void')
+    expect(useVrStore.getState().environment).toBe('void')
   })
 })

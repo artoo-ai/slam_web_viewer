@@ -4,6 +4,7 @@ import { SceneContent } from './SceneContent'
 import { SceneRoot } from '../../vr/SceneRoot'
 import { DesktopControls } from '../../vr/DesktopControls'
 import { Locomotion } from '../../vr/Locomotion'
+import { VoidBackdrop } from '../../vr/VoidBackdrop'
 import { xrStore } from '../../vr/xrStore'
 import { VrHud } from '../../vr/VrHud'
 
@@ -20,6 +21,7 @@ export function ViewportCanvas() {
       <XR store={xrStore}>
         <DesktopControls />
         <Locomotion />
+        <VoidBackdrop />
         <SceneRoot>
           <SceneContent />
         </SceneRoot>
