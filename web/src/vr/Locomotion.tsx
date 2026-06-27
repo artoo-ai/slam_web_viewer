@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Vector3, type Group } from 'three'
-import { XROrigin, TeleportTarget, useXRInputSourceState } from '@react-three/xr'
+import { XROrigin, TeleportTarget, useXRInputSourceState, useXR } from '@react-three/xr'
 import { useVrStore, clampWorldScale } from '../stores/vrModeStore'
 
 // Module-level scratch vectors: avoid allocating in useFrame to reduce GC churn.
@@ -54,6 +54,9 @@ export function Locomotion() {
   const origin = useRef<Group>(null)
   const grab = useRef<{ startDist: number; startScale: number } | null>(null)
 
+  // True while an XR session is active; false on desktop.
+  const inXR = useXR((s) => s.session != null)
+
   // XRControllerState | undefined — typed by v6; undefined when controller not present.
   const leftCtrl = useXRInputSourceState('controller', 'left')
   const rightCtrl = useXRInputSourceState('controller', 'right')
@@ -83,6 +86,7 @@ export function Locomotion() {
 
     if (!grab.current) {
       // First frame of the gesture: record baseline.
+      if (dist < 0.005) return // < 5 mm apart: degenerate start, wait for a real spread
       grab.current = {
         startDist: dist,
         startScale: useVrStore.getState().worldScale,
@@ -103,19 +107,23 @@ export function Locomotion() {
       <XROrigin ref={origin} />
 
       {/* TeleportTarget: wraps a large invisible floor plane at y=0.
+          Only rendered during an active XR session — on desktop the invisible mesh would
+          intercept R3F pointer raycasts (e.g. GoalControls double-click for Nav2 goals).
           onTeleport fires when the user pulls the trigger while pointing at it.
           The second arg (ThreeEvent<MouseEvent>) is intentionally omitted — TypeScript
           allows fewer parameters than declared. */}
-      <TeleportTarget
-        onTeleport={(p) => {
-          if (origin.current) origin.current.position.copy(p)
-        }}
-      >
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-          <planeGeometry args={[200, 200]} />
-          <meshBasicMaterial visible={false} />
-        </mesh>
-      </TeleportTarget>
+      {inXR && (
+        <TeleportTarget
+          onTeleport={(p) => {
+            if (origin.current) origin.current.position.copy(p)
+          }}
+        >
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+            <planeGeometry args={[200, 200]} />
+            <meshBasicMaterial visible={false} />
+          </mesh>
+        </TeleportTarget>
+      )}
     </>
   )
 }
