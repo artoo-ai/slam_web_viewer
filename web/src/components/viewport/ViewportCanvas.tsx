@@ -6,6 +6,7 @@ import { SceneRoot } from '../../vr/SceneRoot'
 import { Locomotion } from '../../vr/Locomotion'
 import { VoidBackdrop } from '../../vr/VoidBackdrop'
 import { XrAutoEnter } from '../../vr/XrAutoEnter'
+import { VrDebugMarker } from '../../vr/VrDebugMarker'
 import { xrStore } from '../../vr/xrStore'
 import { VrHud } from '../../vr/VrHud'
 import { useVrStore } from '../../stores/vrModeStore'
@@ -25,6 +26,7 @@ export function ViewportCanvas() {
       {xrActive ? (
         <XR store={xrStore}>
           <XrAutoEnter />
+          <VrDebugMarker />
           <Locomotion />
           <VoidBackdrop />
           <SceneRoot>

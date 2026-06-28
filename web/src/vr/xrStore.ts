@@ -18,24 +18,12 @@ export const xrStore = createXRStore({
   offerSession: false,
 })
 
-// Derive vrModeStore.mode from the XR session state — single source of truth.
-// Use prevState so we only react to real transitions: while ENTERING (session
-// still null as the manager connects) we must NOT fire exitXr — that would
-// unmount <XR> mid-entry. Only a non-null→null transition is a true session end.
-// state.session?: XRSession (undefined when no session); state.mode: XRSessionMode | null
-let sawSession = false
+// Derive vrModeStore.mode from the XR session state (drives the HUD/backdrop).
+// PURE mode derivation only — no unmount logic here. Unmounting <XR> is driven by
+// the real XRSession 'end' event in XrAutoEnter, which can't misfire mid-session
+// the way polling the store could (that was unmounting the scene during VR).
 xrStore.subscribe((state) => {
-  if (state.session != null) {
-    sawSession = true
-    useVrStore.getState().setMode(state.mode === 'immersive-ar' ? 'ar' : 'vr')
-  } else {
-    useVrStore.getState().setMode('none')
-    // Only unmount <XR> once a session has actually ENDED — never during entry
-    // (session is briefly null while the manager connects). The flag distinguishes
-    // "still entering" from "ended". Avoids prevState (some stores omit it).
-    if (sawSession) {
-      sawSession = false
-      useVrStore.getState().exitXr()
-    }
-  }
+  useVrStore
+    .getState()
+    .setMode(state.session == null ? 'none' : state.mode === 'immersive-ar' ? 'ar' : 'vr')
 })
