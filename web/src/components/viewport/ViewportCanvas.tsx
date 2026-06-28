@@ -3,17 +3,15 @@ import { XR } from '@react-three/xr'
 import { SceneContent } from './SceneContent'
 import { SceneRoot } from '../../vr/SceneRoot'
 import { DesktopControls } from '../../vr/DesktopControls'
-import { Locomotion } from '../../vr/Locomotion'
-import { VoidBackdrop } from '../../vr/VoidBackdrop'
 import { VrDebugMarker } from '../../vr/VrDebugMarker'
 import { xrStore } from '../../vr/xrStore'
-import { VrHud } from '../../vr/VrHud'
 
-/** One Canvas for both desktop and VR, wrapped in <XR> (always mounted, so fiber's
- *  XR render loop is set up correctly from the start). With no session it renders
- *  the flat desktop scene (DesktopControls → OrbitControls + DOM chrome); on
- *  enterVR()/enterAR() the headset takes over and SceneRoot reorients to Y-up.
- *  The flat page renders fine because offerSession is disabled (see xrStore). */
+/** One Canvas for both desktop and VR, wrapped in <XR>.
+ *
+ *  DIAGNOSTIC BUILD: the VR rig (Locomotion, VoidBackdrop, VrHud) is temporarily
+ *  removed to isolate why nothing renders in a session. With no Locomotion there
+ *  is no XROrigin to move the viewpoint, so if the marker/point-cloud appear the
+ *  culprit was the locomotion moving the player away from the scene. */
 export function ViewportCanvas() {
   return (
     <Canvas
@@ -23,13 +21,10 @@ export function ViewportCanvas() {
     >
       <XR store={xrStore}>
         <DesktopControls />
-        <Locomotion />
-        <VoidBackdrop />
         <VrDebugMarker />
         <SceneRoot>
           <SceneContent />
         </SceneRoot>
-        <VrHud />
       </XR>
     </Canvas>
   )
