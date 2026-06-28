@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { xrStore } from './xrStore'
 import { useVrStore, type VrEnvironment } from '../stores/vrModeStore'
 import './vrEntry.css'
 
@@ -50,10 +51,11 @@ export function VrEntry() {
     }
   }, [])
 
-  // Mount <XR> and queue the session entry (XrAutoEnter performs it once the WebXR
-  // manager is connected). Choose AR when available so passthrough is reachable.
+  // Enter directly — <XR> is always mounted, so the WebXR manager is already
+  // connected. Choose AR when available so passthrough is reachable.
   const enter = (environment: VrEnvironment) => {
-    useVrStore.getState().requestEnter(environment, arOk)
+    useVrStore.getState().setEnvironment(environment)
+    ;(arOk ? xrStore.enterAR() : xrStore.enterVR()).catch(() => {})
   }
 
   if (!vrOk && !arOk) return null

@@ -1,45 +1,36 @@
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
 import { XR } from '@react-three/xr'
 import { SceneContent } from './SceneContent'
 import { SceneRoot } from '../../vr/SceneRoot'
+import { DesktopControls } from '../../vr/DesktopControls'
 import { Locomotion } from '../../vr/Locomotion'
 import { VoidBackdrop } from '../../vr/VoidBackdrop'
-import { XrAutoEnter } from '../../vr/XrAutoEnter'
 import { VrDebugMarker } from '../../vr/VrDebugMarker'
 import { xrStore } from '../../vr/xrStore'
 import { VrHud } from '../../vr/VrHud'
-import { useVrStore } from '../../stores/vrModeStore'
 
-/** One Canvas for both desktop and VR. The flat desktop scene renders WITHOUT the
- *  <XR> wrapper — mounting <XR> with no active session freezes the render loop, so
- *  we mount it (and the VR rig) only once the user taps Enter VR (xrActive). On
- *  session end xrStore unmounts it again, restoring the flat scene. */
+/** One Canvas for both desktop and VR, wrapped in <XR> (always mounted, so fiber's
+ *  XR render loop is set up correctly from the start). With no session it renders
+ *  the flat desktop scene (DesktopControls → OrbitControls + DOM chrome); on
+ *  enterVR()/enterAR() the headset takes over and SceneRoot reorients to Y-up.
+ *  The flat page renders fine because offerSession is disabled (see xrStore). */
 export function ViewportCanvas() {
-  const xrActive = useVrStore((s) => s.xrActive)
   return (
     <Canvas
       camera={{ position: [-6, -6, 4], up: [0, 0, 1], fov: 60, near: 0.05, far: 400 }}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
       style={{ background: 'var(--bg)' }}
     >
-      {xrActive ? (
-        <XR store={xrStore}>
-          <XrAutoEnter />
-          <VrDebugMarker />
-          <Locomotion />
-          <VoidBackdrop />
-          <SceneRoot>
-            <SceneContent />
-          </SceneRoot>
-          <VrHud />
-        </XR>
-      ) : (
-        <>
-          <OrbitControls makeDefault target={[0, 0, 0.5]} />
+      <XR store={xrStore}>
+        <DesktopControls />
+        <Locomotion />
+        <VoidBackdrop />
+        <VrDebugMarker />
+        <SceneRoot>
           <SceneContent />
-        </>
-      )}
+        </SceneRoot>
+        <VrHud />
+      </XR>
     </Canvas>
   )
 }
