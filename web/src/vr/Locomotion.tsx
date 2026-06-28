@@ -103,7 +103,11 @@ export function Locomotion() {
   // Robot POV: lock the XROrigin to the robot's live pose so you ride along.
   // poseFeed is in the SLAM map frame (z-up); rendered geometry is SceneRoot's
   // transform of it, so we apply the same scale+rotation to land the origin where
-  // the robot is drawn. Priority 1 runs after any other origin writers this frame.
+  // the robot is drawn.
+  // NOTE: default priority (NOT a positive render priority). A positive useFrame
+  // priority puts R3F into manual-render mode — it stops auto-rendering the scene,
+  // which blanked the whole viewport. Locomotion is already disabled in robot mode
+  // (lockOrigin), so no ordering against the locomotion hook is needed.
   useFrame(() => {
     if (!inXR || viewMode !== 'robot') return
     const pose = poseFeed.latest
@@ -117,7 +121,7 @@ export function Locomotion() {
     _povQuat.set(pose.q[0], pose.q[1], pose.q[2], pose.q[3])
     _povFwd.set(1, 0, 0).applyQuaternion(_povQuat).applyEuler(_zUpEuler)
     o.rotation.set(0, Math.atan2(-_povFwd.x, -_povFwd.z), 0)
-  }, 1)
+  })
 
   // Robot teleop: while in 'drive' mode AND armed, stream the left thumbstick as a
   // body twist into teleopStore — the always-mounted TeleopPanel sends it as
