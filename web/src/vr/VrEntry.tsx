@@ -16,11 +16,38 @@ export function VrEntry() {
   const [vrOk, setVrOk] = useState(false)
   const [arOk, setArOk] = useState(false)
 
+  // Probe WebXR support. The localhost IWER emulator injects navigator.xr
+  // asynchronously (and REPLACES the object), so a one-shot check on mount can
+  // race it and miss. Re-read navigator.xr and re-probe for a few seconds until
+  // support appears; on a real headset the first probe already succeeds.
   useEffect(() => {
-    const xr = navigator.xr
-    if (!xr) return
-    xr.isSessionSupported('immersive-vr').then(setVrOk).catch(() => setVrOk(false))
-    xr.isSessionSupported('immersive-ar').then(setArOk).catch(() => setArOk(false))
+    let cancelled = false
+    let supported = false
+    const probe = () => {
+      const xr = navigator.xr
+      if (!xr) return
+      void xr.isSessionSupported('immersive-vr').then((v) => {
+        if (cancelled) return
+        setVrOk(v)
+        if (v) supported = true
+      })
+      void xr.isSessionSupported('immersive-ar').then((v) => {
+        if (cancelled) return
+        setArOk(v)
+        if (v) supported = true
+      })
+    }
+    probe()
+    const interval = setInterval(() => {
+      if (supported) clearInterval(interval)
+      else probe()
+    }, 500)
+    const stop = setTimeout(() => clearInterval(interval), 5000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      clearTimeout(stop)
+    }
   }, [])
 
   // Mount <XR> and queue the session entry (XrAutoEnter performs it once the WebXR
