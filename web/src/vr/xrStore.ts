@@ -19,14 +19,18 @@ export const xrStore = createXRStore({
 })
 
 // Derive vrModeStore.mode from the XR session state — single source of truth.
-// Covers system-granted sessions that bypass the DOM entry buttons. On session
-// end, also unmount <XR> (exitXr) so the flat page renders normally again.
+// Use prevState so we only react to real transitions: while ENTERING (session
+// still null as the manager connects) we must NOT fire exitXr — that would
+// unmount <XR> mid-entry. Only a non-null→null transition is a true session end.
 // state.session?: XRSession (undefined when no session); state.mode: XRSessionMode | null
-xrStore.subscribe((state) => {
-  if (state.session == null) {
+xrStore.subscribe((state, prev) => {
+  const has = state.session != null
+  const had = prev.session != null
+  if (has) {
+    useVrStore.getState().setMode(state.mode === 'immersive-ar' ? 'ar' : 'vr')
+  } else if (had) {
+    // real session end → restore the flat page
     useVrStore.getState().setMode('none')
     useVrStore.getState().exitXr()
-    return
   }
-  useVrStore.getState().setMode(state.mode === 'immersive-ar' ? 'ar' : 'vr')
 })
