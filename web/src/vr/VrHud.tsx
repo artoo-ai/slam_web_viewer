@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Root, Container, Text } from '@react-three/uikit'
-import { Euler, Quaternion, Vector3, type Group } from 'three'
+import { Euler, Matrix4, Quaternion, Vector3, type Group } from 'three'
 import { useConnectionStore } from '../stores/connectionStore'
 import { useLayersStore, type LayerVisibility } from '../stores/layersStore'
 import { useVrStore } from '../stores/vrModeStore'
@@ -45,16 +45,20 @@ const C = {
 }
 
 // Lazy yaw-follow placement: panel stays UPRIGHT (yaw only — no pitch/roll tilt),
-// sits a comfortable distance ahead and slightly below eye line, and trails head
-// turns smoothly so it holds still long enough to aim the controller ray at it.
-const HUD_DISTANCE = 1.2 // m in front of the head
-const HUD_DROP = 0.18 // m below eye line
+// sits off to the right so it doesn't block the view, slightly below eye line, and
+// trails head turns smoothly so it holds still long enough to aim the ray at it.
+const HUD_DISTANCE = 1.3 // m in front of the head
+const HUD_SIDE = 0.5 // m to the right of center (keeps the forward view clear)
+const HUD_DROP = 0.2 // m below eye line
 const FOLLOW_K = 3.5 // follow stiffness; higher = snappier
 const _camEuler = new Euler(0, 0, 0, 'YXZ')
-const _camPos = new Vector3()
-const _camQuat = new Quaternion()
-const _targetPos = new Vector3()
-const _targetQuat = new Quaternion()
+const _localPos = new Vector3() // desired HUD pose in the XROrigin's local frame
+const _localQuat = new Quaternion()
+const _easedPos = new Vector3() // eased local pose, persisted across frames
+const _easedQuat = new Quaternion()
+const _localMat = new Matrix4()
+const _scratchScale = new Vector3()
+const _scaleOne = new Vector3(1, 1, 1)
 const _yAxis = new Vector3(0, 1, 0)
 
 // uikit 1.0.74 has no padding/borderRadius shorthands — expand them via helpers.
@@ -156,9 +160,14 @@ export function VrHud() {
   const hudRef = useRef<Group>(null)
   const placed = useRef(false)
 
-  // Lazy yaw-follow: target a point ahead of the head along the head's YAW only
-  // (ignoring pitch/roll, so the panel never tilts), then ease position + yaw
-  // toward it. The easing is what lets you aim at a button without it dodging.
+  // Lazy yaw-follow, placed in the XR camera's PARENT frame (the XROrigin) rather
+  // than world space. In Robot POV, Locomotion locks XROrigin to the robot's pose,
+  // which steps in discrete jumps as the robot drives; easing toward a world-space
+  // target made each step jump the target and bounce the panel. Instead we ease only
+  // the head-relative offset (smooth — driven by head motion) in origin-local space,
+  // then apply the origin's world matrix RIGIDLY. A robot step then moves the HUD and
+  // the head by the same amount, so the panel holds steady in view while head turns
+  // still ease. (yaw only, so the panel never pitches/rolls.)
   useFrame((state, delta) => {
     if (mode === 'none') {
       placed.current = false
@@ -166,31 +175,33 @@ export function VrHud() {
     }
     const hud = hudRef.current
     if (!hud) return
-    // Use the camera's WORLD pose, not its local transform. In Robot POV the XR
-    // camera is parented under XROrigin, which Locomotion locks to the robot's
-    // world pose — so cam.position (local) stays near zero while the head is out
-    // at the robot. getWorldPosition/getWorldQuaternion fold in the XROrigin
-    // offset, keeping the HUD in front of the operator in both Free and Robot POV.
     const cam = state.camera
-    cam.getWorldPosition(_camPos)
-    cam.getWorldQuaternion(_camQuat)
-    _camEuler.setFromQuaternion(_camQuat, 'YXZ')
-    const yaw = _camEuler.y
-    _targetPos.set(
-      _camPos.x - Math.sin(yaw) * HUD_DISTANCE,
-      _camPos.y - HUD_DROP,
-      _camPos.z - Math.cos(yaw) * HUD_DISTANCE,
+    const yaw = _camEuler.setFromQuaternion(cam.quaternion, 'YXZ').y
+    const sin = Math.sin(yaw)
+    const cos = Math.cos(yaw)
+    // forward (ahead of head): (-sin, -cos) in xz; right: (cos, -sin) in xz.
+    _localPos.set(
+      cam.position.x - sin * HUD_DISTANCE + cos * HUD_SIDE,
+      cam.position.y - HUD_DROP,
+      cam.position.z - cos * HUD_DISTANCE - sin * HUD_SIDE,
     )
-    _targetQuat.setFromAxisAngle(_yAxis, yaw)
+    _localQuat.setFromAxisAngle(_yAxis, yaw)
     if (!placed.current) {
-      hud.position.copy(_targetPos)
-      hud.quaternion.copy(_targetQuat)
+      _easedPos.copy(_localPos)
+      _easedQuat.copy(_localQuat)
       placed.current = true
     } else {
       const alpha = 1 - Math.exp(-FOLLOW_K * delta)
-      hud.position.lerp(_targetPos, alpha)
-      hud.quaternion.slerp(_targetQuat, alpha)
+      _easedPos.lerp(_localPos, alpha)
+      _easedQuat.slerp(_localQuat, alpha)
     }
+    _localMat.compose(_easedPos, _easedQuat, _scaleOne)
+    const origin = cam.parent
+    if (origin) {
+      origin.updateWorldMatrix(true, false) // current robot pose (Locomotion ran this frame)
+      _localMat.premultiply(origin.matrixWorld)
+    }
+    _localMat.decompose(hud.position, hud.quaternion, _scratchScale)
   })
 
   if (mode === 'none') return null
@@ -199,7 +210,7 @@ export function VrHud() {
 
   return (
     <group ref={hudRef}>
-      <Root pixelSize={0.0016} anchorX="center" anchorY="center">
+      <Root pixelSize={0.0012} anchorX="center" anchorY="center">
         <Container
           flexDirection="column"
           gapRow={15}
