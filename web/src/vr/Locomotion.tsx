@@ -174,30 +174,33 @@ export function Locomotion() {
     }
   })
 
+  // Everything here is rendered ONLY during an active session. XROrigin adds the
+  // XR camera to its group (group.add(gl.xr.getCamera())); on the flat desktop
+  // (no session) that disturbs the normal camera and blanks the viewport — so it
+  // must not exist outside a session. On desktop OrbitControls owns the camera and
+  // no origin is needed. The teleport floor is likewise session-only (its invisible
+  // mesh would otherwise intercept desktop pointer raycasts).
+  if (!inXR) return null
+
   return (
     <>
       {/* XROrigin: anchors the player to world space; room-scale movement is automatic.
           No position prop — defaults to (0,0,0); teleport mutates via ref outside render. */}
       <XROrigin ref={origin} />
 
-      {/* TeleportTarget: wraps a large invisible floor plane at y=0.
-          Only rendered during an active XR session — on desktop the invisible mesh would
-          intercept R3F pointer raycasts (e.g. GoalControls double-click for Nav2 goals).
-          onTeleport fires when the user pulls the trigger while pointing at it.
-          The second arg (ThreeEvent<MouseEvent>) is intentionally omitted — TypeScript
-          allows fewer parameters than declared. */}
-      {inXR && (
-        <TeleportTarget
-          onTeleport={(p) => {
-            if (origin.current) origin.current.position.copy(p)
-          }}
-        >
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-            <planeGeometry args={[200, 200]} />
-            <meshBasicMaterial visible={false} />
-          </mesh>
-        </TeleportTarget>
-      )}
+      {/* TeleportTarget: a large invisible floor plane at y=0; onTeleport fires when
+          the user pulls the trigger while pointing at it. (Second arg
+          ThreeEvent<MouseEvent> intentionally omitted — fewer params is allowed.) */}
+      <TeleportTarget
+        onTeleport={(p) => {
+          if (origin.current) origin.current.position.copy(p)
+        }}
+      >
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+          <planeGeometry args={[200, 200]} />
+          <meshBasicMaterial visible={false} />
+        </mesh>
+      </TeleportTarget>
     </>
   )
 }
