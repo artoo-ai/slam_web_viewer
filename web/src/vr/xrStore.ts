@@ -23,14 +23,19 @@ export const xrStore = createXRStore({
 // still null as the manager connects) we must NOT fire exitXr — that would
 // unmount <XR> mid-entry. Only a non-null→null transition is a true session end.
 // state.session?: XRSession (undefined when no session); state.mode: XRSessionMode | null
-xrStore.subscribe((state, prev) => {
-  const has = state.session != null
-  const had = prev.session != null
-  if (has) {
+let sawSession = false
+xrStore.subscribe((state) => {
+  if (state.session != null) {
+    sawSession = true
     useVrStore.getState().setMode(state.mode === 'immersive-ar' ? 'ar' : 'vr')
-  } else if (had) {
-    // real session end → restore the flat page
+  } else {
     useVrStore.getState().setMode('none')
-    useVrStore.getState().exitXr()
+    // Only unmount <XR> once a session has actually ENDED — never during entry
+    // (session is briefly null while the manager connects). The flag distinguishes
+    // "still entering" from "ended". Avoids prevState (some stores omit it).
+    if (sawSession) {
+      sawSession = false
+      useVrStore.getState().exitXr()
+    }
   }
 })
