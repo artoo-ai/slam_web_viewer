@@ -51,6 +51,8 @@ const HUD_DISTANCE = 1.2 // m in front of the head
 const HUD_DROP = 0.18 // m below eye line
 const FOLLOW_K = 3.5 // follow stiffness; higher = snappier
 const _camEuler = new Euler(0, 0, 0, 'YXZ')
+const _camPos = new Vector3()
+const _camQuat = new Quaternion()
 const _targetPos = new Vector3()
 const _targetQuat = new Quaternion()
 const _yAxis = new Vector3(0, 1, 0)
@@ -164,13 +166,20 @@ export function VrHud() {
     }
     const hud = hudRef.current
     if (!hud) return
+    // Use the camera's WORLD pose, not its local transform. In Robot POV the XR
+    // camera is parented under XROrigin, which Locomotion locks to the robot's
+    // world pose — so cam.position (local) stays near zero while the head is out
+    // at the robot. getWorldPosition/getWorldQuaternion fold in the XROrigin
+    // offset, keeping the HUD in front of the operator in both Free and Robot POV.
     const cam = state.camera
-    _camEuler.setFromQuaternion(cam.quaternion, 'YXZ')
+    cam.getWorldPosition(_camPos)
+    cam.getWorldQuaternion(_camQuat)
+    _camEuler.setFromQuaternion(_camQuat, 'YXZ')
     const yaw = _camEuler.y
     _targetPos.set(
-      cam.position.x - Math.sin(yaw) * HUD_DISTANCE,
-      cam.position.y - HUD_DROP,
-      cam.position.z - Math.cos(yaw) * HUD_DISTANCE,
+      _camPos.x - Math.sin(yaw) * HUD_DISTANCE,
+      _camPos.y - HUD_DROP,
+      _camPos.z - Math.cos(yaw) * HUD_DISTANCE,
     )
     _targetQuat.setFromAxisAngle(_yAxis, yaw)
     if (!placed.current) {
