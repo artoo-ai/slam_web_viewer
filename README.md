@@ -50,6 +50,29 @@ the Parameters panel.
 The rclpy bridge subscribes to FAST-LIO2 (`/cloud_registered_body`, `/Odometry`) and republishes
 over the same wire protocol — the viewer doesn't change at all.
 
+### One command: full 2D stack + bridge
+
+`start_viz_stack.sh` brings up everything the viewer needs for the 2D stack in one shot —
+2D SLAM, the D435 camera, the Yahboom base — verifies each is running, then starts the bridge.
+Re-running it restarts the stack cleanly, which is how you recover after moving the robot
+(slam_toolbox otherwise keeps dead-reckoning from the old pose). Startup order is handled for
+you: SLAM first (it resets the sensors), then the camera (so SLAM's `kill_sensors` doesn't tear
+it down), then the base.
+
+```bash
+cd ~/robot_gui
+./start_viz_stack.sh                        # slam_bringup scripts in the default folder
+./start_viz_stack.sh /path/to/slam_bringup  # or pass the folder (also via $SLAM_DIR)
+./start_viz_stack.sh --no-bridge            # robot stack only
+./start_viz_stack.sh --stop                 # tear the whole stack (incl. bridge) down
+```
+
+Default scripts folder: `/home/rico/slam_ws/src/slam_bringup`. Per-component logs land in
+`/tmp/viz_stack/` (override with `$VIZ_LOG_DIR`). Ctrl-C stops the foreground bridge; the robot
+stack keeps running until `--stop`.
+
+Or start the pieces individually:
+
 One-time setup on the Jetson (creates `bridge/.venv-ros` with `--system-site-packages` so rclpy
 from the ROS2 env stays importable):
 
