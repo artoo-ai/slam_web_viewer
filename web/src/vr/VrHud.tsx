@@ -48,7 +48,7 @@ const C = {
 // sits off to the right so it doesn't block the view, slightly below eye line, and
 // trails head turns smoothly so it holds still long enough to aim the ray at it.
 const HUD_DISTANCE = 1.3 // m in front of the head
-const HUD_SIDE = 0.32 // m to the right of center (offset enough to keep the view clear, close enough to read without turning)
+const HUD_SIDE = 0.4 // m to the right of center (offset enough to keep the view clear, close enough to read without turning)
 const HUD_DROP = 0.2 // m below eye line
 const FOLLOW_K = 3.5 // follow stiffness; higher = snappier
 const _camEuler = new Euler(0, 0, 0, 'YXZ')
