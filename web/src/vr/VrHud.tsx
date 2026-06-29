@@ -9,6 +9,7 @@ import { useTeleopStore } from '../stores/teleopStore'
 import { mapFeed } from '../stores/mapFeed'
 import { scanFeed } from '../stores/scanFeed'
 import { fpsMeter } from '../lib/viewportRefs'
+import { VrCamera } from './VrCamera'
 
 /** Floating VR HUD (session-only). Parented to a group we lazy yaw-follow ~1.2m
  *  in front of the operator. Styled as a compact instrument panel — see the
@@ -208,6 +209,7 @@ export function VrHud() {
 
   return (
     <group ref={hudRef}>
+      {connected && layers.camera && <VrCamera />}
       <Root pixelSize={0.0012} anchorX="center" anchorY="center">
         <Container
           flexDirection="column"
@@ -262,6 +264,10 @@ export function VrHud() {
               <Section label="VIEW">
                 <Chip label="Free" active={viewMode === 'free'} onClick={() => setViewMode('free')} />
                 <Chip label="Robot POV" active={viewMode === 'robot'} onClick={() => setViewMode('robot')} />
+              </Section>
+
+              <Section label="CAMERA">
+                <Chip label="Camera feed" active={layers.camera} onClick={() => toggle('camera')} />
               </Section>
 
               <Section label="LAYERS">

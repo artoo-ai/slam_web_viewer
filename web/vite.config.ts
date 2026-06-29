@@ -8,6 +8,12 @@ import type { Duplex } from 'node:stream'
 // remote robot, e.g. BRIDGE_WS=ws://gizmo.local:9090 npm run dev
 const BRIDGE_TARGET = process.env.BRIDGE_WS ?? 'ws://localhost:9090'
 
+// The robot's MJPEG camera server (:8080). Defaults to the bridge host so a
+// single BRIDGE_WS=ws://<robot>:9090 also routes the camera; override with
+// CAMERA_HTTP=http://<host>:8080 if it lives elsewhere.
+const CAMERA_TARGET =
+  process.env.CAMERA_HTTP ?? `http://${new URL(BRIDGE_TARGET).hostname}:8080`
+
 /** Proxies the same-origin `wss://<host>/bridge` path to the local `ws` bridge so
  *  an HTTPS page (the Quest headset) can reach it without a mixed-content block.
  *
@@ -51,9 +57,35 @@ function bridgeWsProxy(): PluginOption {
   }
 }
 
+/** Proxies the same-origin `/camera/*` path to the robot's MJPEG server (:8080)
+ *  so the HTTPS Quest page can show the camera feed without a mixed-content
+ *  block. Same quiet-error rationale as the bridge proxy: a missing/refused
+ *  camera just ends the response instead of spamming the terminal. */
+function cameraHttpProxy(): PluginOption {
+  return {
+    name: 'camera-http-proxy',
+    configureServer(server) {
+      const proxy = createProxyServer({ target: CAMERA_TARGET })
+      proxy.on('error', (_err, _req, res) => {
+        try {
+          const r = res as import('node:http').ServerResponse | undefined
+          if (r && !r.headersSent) r.writeHead(502)
+          r?.end()
+        } catch {
+          /* response already gone */
+        }
+      })
+      server.middlewares.use('/camera', (req, res) => {
+        req.url = req.url?.replace(/^\/camera/, '') || '/'
+        proxy.web(req, res)
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), basicSsl(), bridgeWsProxy()],
+  plugins: [react(), basicSsl(), bridgeWsProxy(), cameraHttpProxy()],
   server: {
     host: true, // expose on the LAN so the Quest browser can reach it
   },
