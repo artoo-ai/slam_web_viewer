@@ -48,7 +48,7 @@ const C = {
 // sits off to the right so it doesn't block the view, slightly below eye line, and
 // trails head turns smoothly so it holds still long enough to aim the ray at it.
 const HUD_DISTANCE = 1.3 // m in front of the head
-const HUD_SIDE = 0.5 // m to the right of center (keeps the forward view clear)
+const HUD_SIDE = 0.32 // m to the right of center (offset enough to keep the view clear, close enough to read without turning)
 const HUD_DROP = 0.2 // m below eye line
 const FOLLOW_K = 3.5 // follow stiffness; higher = snappier
 const _camEuler = new Euler(0, 0, 0, 'YXZ')
@@ -121,12 +121,6 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-const Row = ({ children }: { children: ReactNode }) => (
-  <Container flexDirection="row" gapColumn={8}>
-    {children}
-  </Container>
-)
-
 export function VrHud() {
   const mode = useVrStore((s) => s.mode)
   const environment = useVrStore((s) => s.environment)
@@ -156,6 +150,10 @@ export function VrHud() {
     const t = setInterval(() => setScene({ pts: mapFeed.count + scanFeed.count, fps: fpsMeter.fps }), 100)
     return () => clearInterval(t)
   }, [mode])
+
+  // Accordion: click the header to collapse the panel down to just its title bar
+  // (keeps the view clear), click again to expand.
+  const [expanded, setExpanded] = useState(true)
 
   const hudRef = useRef<Group>(null)
   const placed = useRef(false)
@@ -213,78 +211,82 @@ export function VrHud() {
       <Root pixelSize={0.0012} anchorX="center" anchorY="center">
         <Container
           flexDirection="column"
-          gapRow={15}
-          {...pad(17, 16)}
-          {...radius(14)}
+          gapRow={12}
+          {...pad(14, 13)}
+          {...radius(13)}
           borderWidth={1.5}
           borderColor={C.panelBorder}
           backgroundColor={C.panel}
-          width={460}
+          width={230}
         >
-          {/* Header: accent dot · wordmark · live status */}
-          <Container flexDirection="row" alignItems="center" gapColumn={9}>
-            <Container width={8} height={8} {...radius(4)} backgroundColor={C.accent} />
-            <Text fontSize={15} letterSpacing={3} color={C.text}>ROBOT GUI</Text>
+          {/* Header (click to expand/collapse): caret · wordmark · live dot */}
+          <Container
+            flexDirection="row"
+            alignItems="center"
+            gapColumn={8}
+            cursor="pointer"
+            onClick={() => setExpanded((e) => !e)}
+            hover={{ opacity: 0.85 }}
+          >
+            <Text fontSize={11} color={C.accent}>{expanded ? '▾' : '▸'}</Text>
+            <Text fontSize={14} letterSpacing={2.5} color={C.text}>ROBOT GUI</Text>
             <Container flexGrow={1} />
             <Container width={7} height={7} {...radius(4)} backgroundColor={connected ? C.live : C.down} />
-            <Text fontSize={11} letterSpacing={1} color={connected ? C.live : C.down}>
+            <Text fontSize={10} letterSpacing={1} color={connected ? C.live : C.down}>
               {connected ? 'LIVE' : status.toUpperCase()}
             </Text>
           </Container>
 
-          <Container height={1} backgroundColor={C.divider} />
+          {expanded && (
+            <>
+              <Container height={1} backgroundColor={C.divider} />
 
-          {/* Metrics: points · fps */}
-          <Container flexDirection="row" alignItems="center" gapColumn={7}>
-            <Text fontSize={10} letterSpacing={1.5} color={C.label}>POINTS</Text>
-            <Text fontSize={15} color={C.text}>{scene.pts.toLocaleString()}</Text>
-            <Container width={3} height={3} {...radius(2)} backgroundColor={C.label} />
-            <Text fontSize={15} color={C.text}>{scene.fps}</Text>
-            <Text fontSize={10} letterSpacing={1.5} color={C.label}>FPS</Text>
-          </Container>
+              {/* Metrics: points · fps */}
+              <Container flexDirection="row" alignItems="center" gapColumn={6}>
+                <Text fontSize={9} letterSpacing={1.5} color={C.label}>PTS</Text>
+                <Text fontSize={14} color={C.text}>{scene.pts.toLocaleString()}</Text>
+                <Container flexGrow={1} />
+                <Text fontSize={14} color={C.text}>{scene.fps}</Text>
+                <Text fontSize={9} letterSpacing={1.5} color={C.label}>FPS</Text>
+              </Container>
 
-          <Section label="ENVIRONMENT">
-            <Row>
-              <Chip label="Void" active={environment === 'void'} onClick={() => setEnvironment('void')} grow />
-              <Chip
-                label="Passthrough"
-                active={environment === 'passthrough'}
-                onClick={() => setEnvironment('passthrough')}
-                grow
-              />
-            </Row>
-          </Section>
+              <Section label="ENVIRONMENT">
+                <Chip label="Void" active={environment === 'void'} onClick={() => setEnvironment('void')} />
+                <Chip
+                  label="Passthrough"
+                  active={environment === 'passthrough'}
+                  onClick={() => setEnvironment('passthrough')}
+                />
+              </Section>
 
-          <Section label="VIEW">
-            <Row>
-              <Chip label="Free" active={viewMode === 'free'} onClick={() => setViewMode('free')} grow />
-              <Chip label="Robot POV" active={viewMode === 'robot'} onClick={() => setViewMode('robot')} grow />
-            </Row>
-          </Section>
+              <Section label="VIEW">
+                <Chip label="Free" active={viewMode === 'free'} onClick={() => setViewMode('free')} />
+                <Chip label="Robot POV" active={viewMode === 'robot'} onClick={() => setViewMode('robot')} />
+              </Section>
 
-          <Section label="LAYERS">
-            <Container flexDirection="row" flexWrap="wrap" gapRow={8} gapColumn={8}>
-              {LAYERS.map(({ key, label }) => (
-                <Chip key={key} label={label} active={layers[key]} onClick={() => toggle(key)} />
-              ))}
-            </Container>
-          </Section>
+              <Section label="LAYERS">
+                <Container flexDirection="row" flexWrap="wrap" gapRow={8} gapColumn={8}>
+                  {LAYERS.map(({ key, label }) => (
+                    <Chip key={key} label={label} active={layers[key]} onClick={() => toggle(key)} />
+                  ))}
+                </Container>
+              </Section>
 
-          {hasTeleop && (
-            <Section label="JOYSTICK">
-              <Row>
-                <Chip label="Move me" active={joystickMode === 'move'} onClick={selectMove} grow />
-                <Chip label="Drive robot" active={joystickMode === 'drive'} onClick={() => setJoystickMode('drive')} grow />
-                {joystickMode === 'drive' && (
-                  <Chip
-                    label={armed ? 'STOP' : 'ARM'}
-                    active={armed}
-                    tone="alert"
-                    onClick={() => (armed ? useTeleopStore.getState().disarm() : useTeleopStore.getState().arm())}
-                  />
-                )}
-              </Row>
-            </Section>
+              {hasTeleop && (
+                <Section label="JOYSTICK">
+                  <Chip label="Move me" active={joystickMode === 'move'} onClick={selectMove} />
+                  <Chip label="Drive robot" active={joystickMode === 'drive'} onClick={() => setJoystickMode('drive')} />
+                  {joystickMode === 'drive' && (
+                    <Chip
+                      label={armed ? 'STOP' : 'ARM'}
+                      active={armed}
+                      tone="alert"
+                      onClick={() => (armed ? useTeleopStore.getState().disarm() : useTeleopStore.getState().arm())}
+                    />
+                  )}
+                </Section>
+              )}
+            </>
           )}
         </Container>
       </Root>
