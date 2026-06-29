@@ -11,9 +11,15 @@ import {
 import { useVrStore, clampWorldScale } from '../stores/vrModeStore'
 import { useTeleopStore } from '../stores/teleopStore'
 import { poseFeed } from '../stores/poseFeed'
+import { connection } from '../lib/transport/connection'
 import { Z_UP_TO_Y_UP } from './coords'
 
 const DRIVE_DEADZONE = 0.12 // ignore small thumbstick noise when driving the robot
+const TURN_DEADZONE = 0.5 // how far the right stick must move before the view turns
+const TURN_SPEED = 2.0 // view turn rate, rad/s (free locomotion)
+const DRIVE_SEND_HZ = 15 // cmd_vel rate streamed from the XR frame loop while driving
+
+const round = (v: number) => Math.round(v * 1000) / 1000
 
 // Module-level scratch vectors: avoid allocating in useFrame to reduce GC churn.
 const _posA = new Vector3()
@@ -70,6 +76,7 @@ const _povFwd = new Vector3()
 export function Locomotion() {
   const origin = useRef<Group>(null)
   const grab = useRef<{ startDist: number; startScale: number } | null>(null)
+  const lastDriveSend = useRef(0)
 
   // True while an XR session is active; false on desktop.
   const inXR = useXR((s) => s.session != null)
@@ -89,16 +96,23 @@ export function Locomotion() {
   // driving the robot or riding it — disable world-locomotion in both cases.
   const lockOrigin = driving || viewMode === 'robot'
 
-  // Thumbstick locomotion: left stick slides across the map (relative to head yaw),
-  // right stick smoothly rotates the view. Moves the XROrigin; no-op on desktop
-  // (no controllers). Disabled while driving/riding the robot. Options are read
-  // live each frame by the hook, so passing false here turns it off on mode flip.
-  useXRControllerLocomotion(
-    origin,
-    lockOrigin ? false : { speed: 2 },
-    lockOrigin ? false : { type: 'smooth', speed: 1.5 },
-    'left',
-  )
+  // Thumbstick translation: left stick slides across the map (relative to head
+  // yaw). Moves the XROrigin; no-op on desktop (no controllers). Disabled while
+  // driving/riding the robot. Rotation is OFF here — the pmndrs hook turns the
+  // view the wrong way (stick-left rotates clockwise); we own turning below with
+  // the intuitive sign.
+  useXRControllerLocomotion(origin, lockOrigin ? false : { speed: 2 }, false, 'left')
+
+  // Smooth view turn on the RIGHT stick, with the intuitive sign: pushing the
+  // stick left turns you left (CCW, +Y). Disabled while driving/riding the robot.
+  useFrame((_, delta) => {
+    if (!inXR || lockOrigin) return
+    const o = origin.current
+    if (!o) return
+    const rx = rightCtrl?.gamepad['xr-standard-thumbstick']?.xAxis ?? 0
+    if (Math.abs(rx) <= TURN_DEADZONE) return
+    o.rotation.y -= Math.sign(rx) * TURN_SPEED * delta
+  })
 
   // Robot POV: lock the XROrigin to the robot's live pose so you ride along.
   // poseFeed is in the SLAM map frame (z-up); rendered geometry is SceneRoot's
@@ -123,10 +137,14 @@ export function Locomotion() {
     o.rotation.set(0, Math.atan2(-_povFwd.x, -_povFwd.z), 0)
   })
 
-  // Robot teleop: while in 'drive' mode AND armed, stream the left thumbstick as a
-  // body twist into teleopStore — the always-mounted TeleopPanel sends it as
-  // cmd_vel (and halts the robot via the bridge deadman on disarm/release).
-  useFrame(() => {
+  // Robot teleop: while in 'drive' mode AND armed, map the left thumbstick to a
+  // body twist and stream it as cmd_vel STRAIGHT FROM THE XR FRAME LOOP. The DOM
+  // TeleopPanel also streams on a setInterval, but the browser throttles a
+  // backgrounded page's timers to ~1 Hz while an immersive session is active —
+  // which made driving lurch forward in 1-second chunks and a turn take minutes.
+  // The R3F loop runs on the XR animation frame (headset rate) and is never
+  // throttled, so we send here at a capped rate for a steady stream.
+  useFrame((state) => {
     if (!inXR || !driving || !armed) return
     const stick = leftCtrl?.gamepad['xr-standard-thumbstick']
     let nx = stick?.xAxis ?? 0
@@ -136,6 +154,12 @@ export function Locomotion() {
       ny = 0
     }
     useTeleopStore.getState().setVector(nx, -ny) // up on the stick = forward
+    const t = state.clock.elapsedTime
+    if (t - lastDriveSend.current >= 1 / DRIVE_SEND_HZ) {
+      lastDriveSend.current = t
+      const s = useTeleopStore.getState()
+      connection.send({ cmd: 'cmd_vel', vx: round(s.vx), wz: round(s.wz) })
+    }
   })
 
   useFrame(() => {
